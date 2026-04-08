@@ -2,13 +2,36 @@
 
 ## 🚀 Quick Start
 
-### 1. Instalación de Dependencias
+### 1. Crear Entorno Virtual
+
+```bash
+python -m venv venv
+```
+
+Activar el entorno virtual:
+
+**Windows (PowerShell):**
+```bash
+.\venv\Scripts\Activate.ps1
+```
+
+**Windows (CMD):**
+```bash
+venv\Scripts\activate
+```
+
+**Mac/Linux:**
+```bash
+source venv/bin/activate
+```
+
+### 2. Instalación de Dependencias
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Configuración de Variables de Entorno
+### 3. Configuración de Variables de Entorno
 
 Copia el archivo `.env.example` a `.env`:
 

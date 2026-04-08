@@ -6,7 +6,30 @@ La implementación del agente SRE está **100% completa**. Todos los archivos y 
 
 ## 📋 Pasos para Ejecutar
 
-### 1. Instalar Dependencias
+### 1. Crear Entorno Virtual
+
+```bash
+python -m venv venv
+```
+
+Activar el entorno virtual:
+
+**Windows (PowerShell):**
+```bash
+.\venv\Scripts\Activate.ps1
+```
+
+**Windows (CMD):**
+```bash
+venv\Scripts\activate
+```
+
+**Mac/Linux:**
+```bash
+source venv/bin/activate
+```
+
+### 2. Instalar Dependencias
 
 ```bash
 pip install -r requirements.txt
@@ -21,7 +44,7 @@ Esto instalará:
 - `structlog` - Logging estructurado
 - Y otras dependencias necesarias
 
-### 2. Configurar Variables de Entorno
+### 3. Configurar Variables de Entorno
 
 ```bash
 # Copiar el archivo de ejemplo

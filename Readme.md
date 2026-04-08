@@ -24,23 +24,37 @@ ScoutOps is an intelligent SRE agent that automates the complete incident manage
 ### Installation
 
 1. Clone the repository
-2. Install dependencies:
+2. Create and activate virtual environment:
+```bash
+python -m venv venv
+
+# Windows (PowerShell)
+.\venv\Scripts\Activate.ps1
+
+# Windows (CMD)
+venv\Scripts\activate
+
+# Mac/Linux
+source venv/bin/activate
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Configure environment:
+4. Configure environment:
 ```bash
 cp .env.example .env
 # Edit .env and add your GEMINI_API_KEY
 ```
 
-4. Run example:
+5. Run example:
 ```bash
 python example_usage.py
 ```
 
-5. Run tests:
+6. Run tests:
 ```bash
 python test_agent.py
 ```
