@@ -2,6 +2,9 @@ from pydantic_settings import BaseSettings
 from typing import Optional
 
 
+import os
+from pathlib import Path
+
 class Settings(BaseSettings):
     llm_provider: str = "gemini"
     gemini_api_key: str
@@ -14,7 +17,7 @@ class Settings(BaseSettings):
     backend_port: int = 8000
     
     class Config:
-        env_file = ".env"
+        env_file = str(Path(__file__).parent.parent / ".env")
         case_sensitive = False
         extra = "ignore"
 
