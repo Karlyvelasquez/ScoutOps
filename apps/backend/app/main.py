@@ -68,6 +68,45 @@ def create_incident(request: IncidentCreateRequest, background_tasks: Background
     return IncidentCreateResponse(incident_id=incident_id, status="en_proceso")
 
 
+def map_incident_response(incident_data: dict) -> dict:
+    mapped_data = {
+        "incident_id": incident_data["incident_id"],
+        "status": incident_data["state"],
+        "description": incident_data["input"]["description"],
+        "source": incident_data["input"]["source"],
+        "created_at": incident_data["metadata"]["created_at"],
+        "updated_at": incident_data["metadata"]["updated_at"],
+    }
+    
+    if incident_data.get("error"):
+        mapped_data["error"] = incident_data["error"].get("message")
+        
+    if incident_data.get("ticket"):
+        mapped_data["ticket"] = incident_data["ticket"]
+
+    rag_response = incident_data.get("rag_response")
+    if rag_response:
+        result_dict = {
+            "incident_id": incident_data["incident_id"],
+            "incident_type": rag_response.get("incident_type"),
+            "severity": rag_response.get("severity"),
+            "summary": rag_response.get("summary"),
+            "suggested_actions": rag_response.get("suggested_actions", []),
+            "assigned_team": rag_response.get("assigned_team"),
+            "confidence_score": rag_response.get("confidence_score"),
+            "processing_time_ms": rag_response.get("processing_time_ms", 0)
+        }
+        
+        components = rag_response.get("affected_components", [])
+        if components:
+            result_dict["affected_plugin"] = components[0].get("plugin", "")
+            result_dict["layer"] = components[0].get("layer", "")
+            result_dict["affected_file"] = components[0].get("file")
+            
+        mapped_data["result"] = result_dict
+    
+    return mapped_data
+
 @app.get("/incident/{incident_id}", response_model=IncidentStatusResponse)
 def get_incident(incident_id: str):
     incident_data = agent_service.get_incident_status(incident_id)
@@ -75,7 +114,7 @@ def get_incident(incident_id: str):
     if incident_data is None:
         raise HTTPException(status_code=404, detail="Incident not found")
 
-    return IncidentStatusResponse(**incident_data)
+    return IncidentStatusResponse(**map_incident_response(incident_data))
 
 
 @app.post("/webhook/ticket-update", response_model=IncidentStatusResponse)
@@ -89,7 +128,7 @@ def ticket_update_webhook(request: TicketUpdateRequest):
         )
         if incident_data is None:
             raise HTTPException(status_code=404, detail="Incident not found")
-        return IncidentStatusResponse(**incident_data)
+        return IncidentStatusResponse(**map_incident_response(incident_data))
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
