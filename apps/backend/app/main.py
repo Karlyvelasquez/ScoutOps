@@ -1,8 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Literal
+from pydantic import ValidationError
 from app.services.agent_service import AgentService
+from app.schemas.incident import (
+    IncidentCreateRequest,
+    IncidentCreateResponse,
+    IncidentStatusResponse,
+    TicketUpdateRequest,
+)
 
 app = FastAPI(
     title="SRE Agent API",
@@ -21,19 +26,6 @@ app.add_middleware(
 agent_service = AgentService()
 
 
-class IncidentRequest(BaseModel):
-    description: str
-    source: Literal["QA", "soporte", "monitoring"]
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "description": "Users getting 500 error when trying to pay with credit card",
-                "source": "QA"
-            }
-        }
-
-
 @app.get("/")
 def read_root():
     return {
@@ -43,28 +35,45 @@ def read_root():
     }
 
 
-@app.post("/incident")
-def create_incident(request: IncidentRequest):
-    try:
-        result = agent_service.process_incident(
-            description=request.description,
-            source=request.source
-        )
-        
-        return result.model_dump()
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.post("/incident", response_model=IncidentCreateResponse)
+def create_incident(request: IncidentCreateRequest, background_tasks: BackgroundTasks):
+    incident_id = agent_service.create_incident(
+        description=request.description,
+        source=request.source,
+    )
+    background_tasks.add_task(
+        agent_service.process_incident_async,
+        incident_id,
+        request.description,
+        request.source,
+    )
+    return IncidentCreateResponse(incident_id=incident_id, status="en_proceso")
 
 
-@app.get("/incident/{incident_id}")
+@app.get("/incident/{incident_id}", response_model=IncidentStatusResponse)
 def get_incident(incident_id: str):
-    result = agent_service.get_incident(incident_id)
-    
-    if result is None:
+    incident_data = agent_service.get_incident_status(incident_id)
+
+    if incident_data is None:
         raise HTTPException(status_code=404, detail="Incident not found")
-    
-    return result.model_dump()
+
+    return IncidentStatusResponse(**incident_data)
+
+
+@app.post("/webhook/ticket-update", response_model=IncidentStatusResponse)
+def ticket_update_webhook(request: TicketUpdateRequest):
+    try:
+        incident_data = agent_service.update_ticket_status(
+            incident_id=request.incident_id,
+            ticket_id=request.ticket_id,
+            ticket_status=request.ticket_status,
+            resolution_notes=request.resolution_notes,
+        )
+        if incident_data is None:
+            raise HTTPException(status_code=404, detail="Incident not found")
+        return IncidentStatusResponse(**incident_data)
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/incidents")

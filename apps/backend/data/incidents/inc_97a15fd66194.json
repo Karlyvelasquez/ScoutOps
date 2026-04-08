@@ -1,0 +1,28 @@
+{
+  "incident_id": "inc_97a15fd66194",
+  "status": "completado",
+  "description": "Usuarios reciben 500 al pagar con tarjeta en checkout",
+  "source": "QA",
+  "created_at": "2026-04-08T09:38:48.228103",
+  "updated_at": "2026-04-08T09:39:06.378357",
+  "result": {
+    "incident_id": "inc_97a15fd66194",
+    "incident_type": "checkout_failure",
+    "severity": "P1",
+    "affected_plugin": "api-plugin-payments",
+    "layer": "External API",
+    "affected_file": null,
+    "assigned_team": "payments-team",
+    "summary": "Users are encountering HTTP 500 errors when attempting to finalize payments via card during the checkout process. This issue within the payment service prevents successful transaction completion, directly impacting user ability to purchase and potentially leading to lost revenue.",
+    "suggested_actions": [
+      "Check payment service logs for detailed error messages and stack traces related to the HTTP 500.",
+      "Verify the status of the external payment gateway (e.g., Stripe, PayPal) for any reported outages or incidents.",
+      "Review recent deployments or configuration changes to the payment service that might have introduced a regression.",
+      "Confirm connectivity and health of internal services or databases that the payment service depends on."
+    ],
+    "confidence_score": 0.85,
+    "processing_time_ms": 18125
+  },
+  "error": null,
+  "ticket": null
+}
