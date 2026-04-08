@@ -6,6 +6,7 @@ from uuid import uuid4
 from agent.graph import run_triage_agent
 from agent.schemas.input_schema import IncidentReport
 from agent.schemas.output_schema import TriageResult
+from integrations.github import create_ticket
 from app.security.guardrails import assert_safe_text, sanitize_text
 from app.schemas.incident_model import (
     Incident,
@@ -59,6 +60,32 @@ class AgentService:
             end_time = datetime.now(timezone.utc)
 
             rag_response = RAGResponse.from_triage_result(result.model_dump())
+
+            reporter_email = "unknown@example.com"
+            incident_payload = {
+                "incident_id": incident_id,
+                "incident_type": result.incident_type,
+                "severity": result.severity,
+                "affected_plugin": result.affected_plugin,
+                "layer": result.layer,
+                "assigned_team": result.assigned_team,
+                "summary": result.summary,
+                "suggested_actions": result.suggested_actions,
+                "reporter_email": reporter_email,
+                "original_description": cleaned_description,
+            }
+            ticket_info = create_ticket(incident_payload)
+
+            ticket_number = ticket_info.get("ticket_number")
+            if ticket_number:
+                self._save_issue_reporter_mapping(str(ticket_number), reporter_email)
+                incident.ticket = IncidentTicket(
+                    ticket_id=str(ticket_number),
+                    status="open",
+                    resolution_notes=None,
+                    updated_at=end_time,
+                )
+
             incident.state = IncidentState.COMPLETADO
             incident.rag_response = rag_response
             incident.metadata.started_processing_at = start_time
@@ -140,6 +167,26 @@ class AgentService:
         
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(result_dict, f, indent=2, default=str)
+
+    def _save_issue_reporter_mapping(self, ticket_number: str, reporter_email: str) -> None:
+        mapping_file = Path(__file__).resolve().parents[2] / "data" / "issue_reporters.json"
+        mapping_file.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            if mapping_file.exists():
+                with open(mapping_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if not isinstance(data, dict):
+                    data = {}
+            else:
+                data = {}
+        except Exception:
+            data = {}
+
+        data[str(ticket_number)] = reporter_email
+
+        with open(mapping_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
     
     def get_incident(self, incident_id: str) -> Optional[TriageResult]:
         file_path = self.results_dir / f"{incident_id}.json"

@@ -1,7 +1,11 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 from app.services.agent_service import AgentService
+from app.services.resolution_watcher import start_resolution_watcher
 from app.schemas.incident import (
     IncidentCreateRequest,
     IncidentCreateResponse,
@@ -9,10 +13,24 @@ from app.schemas.incident import (
     TicketUpdateRequest,
 )
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    watcher_task = asyncio.create_task(start_resolution_watcher())
+    try:
+        yield
+    finally:
+        watcher_task.cancel()
+        try:
+            await watcher_task
+        except asyncio.CancelledError:
+            pass
+
 app = FastAPI(
     title="SRE Agent API",
     description="API for SRE incident triage agent",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
