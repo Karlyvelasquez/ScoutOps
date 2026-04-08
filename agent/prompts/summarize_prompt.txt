@@ -1,0 +1,16 @@
+Generate a concise technical summary for this incident:
+
+Original Report: {description}
+Type: {incident_type}
+Affected Service: {affected_service}
+Feature: {feature}
+Error Patterns: {error_patterns}
+User Impact: {user_impact}
+
+Create a 2-3 sentence technical summary that:
+1. States the problem clearly and technically
+2. Mentions the affected component/service
+3. Describes the user impact and business consequence
+
+Write for a technical audience (engineers). Be specific and actionable.
+Do not include recommendations or next steps - just describe the problem.

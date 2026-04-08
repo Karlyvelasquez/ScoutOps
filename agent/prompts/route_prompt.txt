@@ -1,0 +1,28 @@
+Assign severity, team, and suggested actions for this incident:
+
+Incident Type: {incident_type}
+Summary: {summary}
+Affected Service: {affected_service}
+
+Determine:
+1. severity: 
+   - P1 (critical): Revenue impact, security breach, complete service outage
+   - P2 (high): Major feature broken, significant user impact
+   - P3 (medium): Minor issue, workaround available
+   
+2. assigned_team: One of: payments-team, orders-team, catalog-team, accounts-team, platform-team
+
+3. affected_plugin: The Reaction Commerce plugin likely involved:
+   - For payment/checkout: "api-plugin-payments-stripe" or "api-plugin-payments"
+   - For orders: "api-plugin-orders"
+   - For catalog: "api-plugin-catalog"
+   - For cart: "api-plugin-carts"
+   - For login/auth: "api-plugin-accounts"
+   - For inventory: "api-plugin-inventory"
+   - For shipping: "api-plugin-shipments"
+   
+4. layer: Where the issue likely is (e.g., "GraphQL resolver", "Database", "External API", "Frontend", "Cache")
+
+5. suggested_actions: List 3-4 specific debugging steps or actions to take
+
+Return as JSON with these exact keys.
