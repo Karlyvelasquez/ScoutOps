@@ -1,6 +1,8 @@
+import os
+from pathlib import Path
 from pydantic_settings import BaseSettings
-from typing import Optional
 
+root_dir = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     gemini_api_key: str
@@ -12,8 +14,7 @@ class Settings(BaseSettings):
     backend_port: int = 8000
     
     class Config:
-        env_file = ".env"
+        env_file = str(root_dir / ".env")
         case_sensitive = False
-
 
 settings = Settings()

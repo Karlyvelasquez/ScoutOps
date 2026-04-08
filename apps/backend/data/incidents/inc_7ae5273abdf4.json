@@ -1,0 +1,36 @@
+{
+  "incident_id": "inc_7ae5273abdf4",
+  "state": "completado",
+  "input": {
+    "description": "Usuarios reciben error 500 al pagar con tarjeta en checkout",
+    "source": "QA"
+  },
+  "metadata": {
+    "created_at": "2026-04-08T17:16:17.134832Z",
+    "updated_at": "2026-04-08T17:16:42.485847Z",
+    "started_processing_at": "2026-04-08T17:16:17.174528Z",
+    "completed_at": "2026-04-08T17:16:42.485847Z"
+  },
+  "rag_response": {
+    "incident_type": "unknown",
+    "severity": "P3",
+    "summary": "Users are encountering HTTP 500 errors when attempting to complete credit card payments during the checkout process. This indicates a critical server-side failure within the payment processing service or its integration with the checkout system. The direct consequence is the inability for customers to finalize purchases, resulting in abandoned carts and potential revenue loss.",
+    "suggested_actions": [
+      "Manual triage required"
+    ],
+    "affected_components": [
+      {
+        "name": "unknown",
+        "plugin": "unknown",
+        "layer": "Unknown",
+        "file": null,
+        "confidence": 0.5
+      }
+    ],
+    "assigned_team": "platform-team",
+    "confidence_score": 0.5,
+    "processing_time_ms": 25238
+  },
+  "ticket": null,
+  "error": null
+}
