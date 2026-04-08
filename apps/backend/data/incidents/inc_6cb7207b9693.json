@@ -1,0 +1,25 @@
+{
+  "incident_id": "inc_6cb7207b9693",
+  "status": "completado",
+  "description": "Trabajo finalizado",
+  "source": "QA",
+  "created_at": "2026-04-08T09:31:45.910483",
+  "updated_at": "2026-04-08T09:32:17.205358",
+  "result": {
+    "incident_id": "inc_6cb7207b9693",
+    "incident_type": "unknown",
+    "severity": "P3",
+    "affected_plugin": "unknown",
+    "layer": "Unknown",
+    "affected_file": null,
+    "assigned_team": "platform-team",
+    "summary": "An incident was logged with the description 'Trabajo finalizado', suggesting a completed task or resolution rather than an active system fault. Critical details such as affected service, feature, and specific error patterns were not provided, rendering the root cause and scope indeterminate. As a result, no direct user impact or business consequence could be identified from this report.",
+    "suggested_actions": [
+      "Manual triage required"
+    ],
+    "confidence_score": 0.5,
+    "processing_time_ms": 31259
+  },
+  "error": null,
+  "ticket": null
+}
