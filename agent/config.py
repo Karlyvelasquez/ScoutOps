@@ -3,7 +3,9 @@ from typing import Optional
 
 
 class Settings(BaseSettings):
+    llm_provider: str = "gemini"
     gemini_api_key: str
+    openai_api_key: Optional[str] = None
     model_name: str = "gemini-2.5-flash"
     temperature: float = 0.3
     max_output_tokens: int = 2048
@@ -14,6 +16,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"
 
 
 settings = Settings()

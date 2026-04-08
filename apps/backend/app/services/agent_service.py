@@ -7,6 +7,7 @@ from agent.graph import run_triage_agent
 from agent.schemas.input_schema import IncidentReport
 from agent.schemas.output_schema import TriageResult
 from integrations.github import create_ticket
+from integrations.slack import notify_team
 from app.security.guardrails import assert_safe_text, sanitize_text
 from app.schemas.incident_model import (
     Incident,
@@ -75,6 +76,7 @@ class AgentService:
                 "original_description": cleaned_description,
             }
             ticket_info = create_ticket(incident_payload)
+            ticket_url = ticket_info.get("ticket_url")
 
             ticket_number = ticket_info.get("ticket_number")
             if ticket_number:
@@ -85,6 +87,9 @@ class AgentService:
                     resolution_notes=None,
                     updated_at=end_time,
                 )
+
+            if ticket_url:
+                notify_team(incident_payload, str(ticket_url))
 
             incident.state = IncidentState.COMPLETADO
             incident.rag_response = rag_response

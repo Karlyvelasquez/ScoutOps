@@ -3,6 +3,7 @@ from agent.state import AgentState
 from agent.utils.logger import logger
 from agent.utils.prompts import load_prompt
 from agent.utils.llm_client import generate_structured_output
+from observability.tracing import trace_node
 
 
 VALID_INCIDENT_TYPES = [
@@ -17,6 +18,7 @@ VALID_INCIDENT_TYPES = [
 ]
 
 
+@trace_node("classify_node")
 def classify_node(state: AgentState) -> AgentState:
     logger.info("classify_node_started")
     start_time = time.time()

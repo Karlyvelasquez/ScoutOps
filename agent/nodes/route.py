@@ -3,6 +3,7 @@ from agent.state import AgentState
 from agent.utils.logger import logger
 from agent.utils.prompts import load_prompt
 from agent.utils.llm_client import generate_structured_output
+from observability.tracing import trace_node
 
 
 PLUGIN_TO_TEAM = {
@@ -17,6 +18,7 @@ PLUGIN_TO_TEAM = {
 }
 
 
+@trace_node("route_node")
 def route_node(state: AgentState) -> AgentState:
     logger.info("route_node_started")
     start_time = time.time()

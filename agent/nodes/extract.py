@@ -3,8 +3,10 @@ from agent.state import AgentState
 from agent.utils.logger import logger
 from agent.utils.prompts import load_prompt
 from agent.utils.llm_client import generate_structured_output
+from observability.tracing import trace_node
 
 
+@trace_node("extract_node")
 def extract_node(state: AgentState) -> AgentState:
     logger.info("extract_node_started", incident_type=state.get("incident_type"))
     start_time = time.time()
