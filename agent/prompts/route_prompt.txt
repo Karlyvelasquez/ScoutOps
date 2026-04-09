@@ -25,15 +25,24 @@ Determine:
 
 5. suggested_actions: List 3-4 specific debugging steps or actions to take
 
-6. confidence_score: Your confidence in this triage decision as a float from 0.0 to 1.0.
-   - 0.85-1.0: Clear incident with a specific error pattern, obvious plugin and team mapping
-   - 0.70-0.84: Good confidence in routing, incident type is clear even if severity has minor ambiguity
-   - 0.50-0.69: Multiple possible plugins or teams could own this, description is ambiguous
-   - 0.0-0.49: Very vague description or insufficient data to reliably route this incident
+6. confidence_score: Score your triage decision by summing these criteria:
 
-   IMPORTANT: For most incidents where the incident_type and affected_service are clearly identified,
-   default to 0.80 confidence. Only go below 0.70 if there is genuine ambiguity about which team
-   or plugin is responsible. A clear incident type like checkout_failure mapping to payments-team
-   should be at least 0.80.
+   START at 0.50 (baseline for any incident).
+
+   ADD points based on evidence quality:
+   +0.15 if the incident_type is unambiguously clear (not "unknown")
+   +0.10 if a specific plugin can be identified with certainty (not "unknown")
+   +0.10 if the affected team is obvious with no overlap between teams
+   +0.08 if specific error messages, status codes or stack traces are mentioned
+   +0.07 if severity is clearly P1 or P2 (impactful/revenue-related) with strong justification
+
+   SUBTRACT points for uncertainty:
+   -0.15 if incident_type is "unknown" or genuinely ambiguous
+   -0.10 if two or more teams could plausibly own this
+   -0.08 if no specific error details are given, only vague symptoms
+   -0.07 if the description is very short (under 20 words) or lacks technical context
+
+   Calculate the total and clamp to [0.0, 1.0]. Use a precise float (e.g. 0.73, 0.88, 0.51).
+   Do NOT round to 0.80 or any fixed value — the score must reflect your actual assessment.
 
 Return as JSON with these exact keys: severity, assigned_team, affected_plugin, layer, suggested_actions, confidence_score.
