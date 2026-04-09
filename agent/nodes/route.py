@@ -101,7 +101,7 @@ def route_node(state: AgentState) -> AgentState:
             state["entities"] = {}
         state["entities"].update(routing_info)
 
-        state["escalated"] = hybrid_confidence < 0.70
+        state["escalated"] = hybrid_confidence <= 0.70
         
         elapsed_ms = int((time.time() - start_time) * 1000)
         state["node_timings"]["route"] = elapsed_ms
