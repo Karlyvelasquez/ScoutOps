@@ -13,6 +13,7 @@ from integrations.github import (
     create_ticket as create_github_ticket,
     search_similar_issues,
     add_comment_to_issue,
+    is_issue_open,
 )
 from integrations.jira import create_ticket as create_jira_ticket
 from integrations.slack import notify_team
@@ -315,6 +316,8 @@ class AgentService:
             try:
                 issue_number = int(ticket_id)
             except (ValueError, TypeError):
+                continue
+            if not is_issue_open(issue_number):
                 continue
             github_repo = os.getenv("GITHUB_REPO", "")
             html_url = f"https://github.com/{github_repo}/issues/{issue_number}" if github_repo else ""

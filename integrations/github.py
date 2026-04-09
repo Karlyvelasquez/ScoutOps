@@ -166,6 +166,36 @@ def search_similar_issues(incident_type: str, affected_plugin: str) -> Optional[
         return None
 
 
+def is_issue_open(issue_number: int) -> bool:
+    """Return True if the GitHub Issue is still open, False if closed or not found."""
+    load_dotenv()
+
+    github_token = os.getenv("GITHUB_TOKEN", "").strip()
+    github_repo = os.getenv("GITHUB_REPO", "").strip()
+
+    if not github_token or not github_repo or "/" not in github_repo:
+        return True
+
+    url = f"https://api.github.com/repos/{github_repo}/issues/{issue_number}"
+    headers = {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json().get("state") == "open"
+    except Exception:
+        logger.exception(
+            "github_get_issue_state_failed",
+            extra={"service": "integrations", "node_name": "github.is_issue_open", "issue_number": issue_number},
+        )
+        return True
+
+
 def add_comment_to_issue(issue_number: int, comment: str) -> dict[str, Any]:
     """Add a comment to an existing GitHub Issue."""
     load_dotenv()
