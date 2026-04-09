@@ -11,7 +11,6 @@
 | **GitHub token** (`issues:write` scope) | Required — ticket creation + deduplication |
 | **Slack incoming webhook URL** | Required — team notifications |
 | Jira API token + project key | Optional — creates Jira tickets in parallel |
-| SMTP credentials | Optional — omit to run in mock-mode (logs only) |
 | Langfuse public + secret key | Optional but recommended for tracing |
 
 ---
@@ -47,20 +46,36 @@ JIRA_EMAIL=you@example.com
 JIRA_API_TOKEN=...
 JIRA_PROJECT_KEY=SRE
 
-# --- Optional: Email notifications ---
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=incident-bot@example.com
-SMTP_PASSWORD=...
-# Leave SMTP_HOST blank to use mock mode (logs email content instead of sending)
+# --- Optional: per-team Slack channel routing ---
+# Maps team names to dedicated Slack incoming webhook URLs.
+# If a team is not listed, falls back to SLACK_WEBHOOK_URL.
+SLACK_TEAM_WEBHOOKS_JSON={
+  "payments-team":    "https://hooks.slack.com/services/..."  ,
+  "accounts-team":   "https://hooks.slack.com/services/...",
+  "catalog-team":    "https://hooks.slack.com/services/...",
+  "orders-team":     "https://hooks.slack.com/services/...",
+  "inc-human-review":"https://hooks.slack.com/services/...",
+  "tickets-resolved":"https://hooks.slack.com/services/..."
+}
+# Channel mapping:
+#   payments-team    → #inc-payments
+#   accounts-team    → #inc-accounts
+#   catalog-team     → #inc-catalog
+#   orders-team      → #inc-orders
+#   inc-human-review → #inc-human-review  (escalations)
+#   tickets-resolved → #tickets-resolved  (resolution notifications)
 
 # --- Optional: Observability ---
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_HOST=https://cloud.langfuse.com
 
-# --- Optional: per-team Slack routing ---
-# SLACK_TEAM_WEBHOOKS_JSON={"payments-team":"https://...","accounts-team":"https://..."}
+# --- Optional: Ticket history + SRE Reports dashboard ---
+NEON_DATABASE_URL=postgresql://user:password@ep-xxx.neon.tech/neondb?sslmode=require
+# Leave blank to run without persistent history (JSON-only mode)
+
+# --- Optional: SRE Wrapped AI narration ---
+OPENAI_API_KEY=sk-...  # Used only by GET /reports/summary; falls back to static phrases if absent
 ```
 
 ---
@@ -192,14 +207,89 @@ Expected result on second submission:
 
 ---
 
-## Step 8 — Test resolution notification
+## Step 8 — Test the voice interface
+
+1. Open **http://localhost:3000**
+2. Click the **microphone** button in the form
+3. Grant browser microphone permission when prompted
+4. Speak an incident in Spanish or English, e.g.:
+   > *"Los usuarios no pueden hacer checkout. Hay un error 500 al procesar el pago con Stripe."*
+5. Wait for the spoken acknowledgement (*"Recibido. Estoy analizando el incidente..."*)
+6. Wait ~10–15 s for the pipeline to complete — the result will be read aloud
+
+Alternatively, test the WebSocket directly:
+
+```javascript
+// Browser console test
+const ws = new WebSocket('ws://localhost:8000/ws/voice');
+ws.onmessage = e => console.log(JSON.parse(e.data));
+ws.send(JSON.stringify({
+  type: 'transcript',
+  text: 'Checkout failing with 500 error from Stripe API',
+  lang: 'en'
+}));
+```
+
+Expected messages from the server:
+1. `{type: "transcript", text: "..."}` — echo
+2. `{type: "response_text", text: "..."}` — acknowledgement text
+3. `<binary>` — MP3 audio chunks
+4. `{type: "audio_end"}`
+5. `{type: "incident_created", incident_id: "inc_..."}`
+6. `{type: "incident_result", text: "...", data: {...}}` — spoken result
+
+---
+
+## Step 9 — Test SRE Reports (Wrapped)
+
+```bash
+# Summary for the last month (default)
+curl http://localhost:8000/reports/summary
+
+# Last week
+curl "http://localhost:8000/reports/summary?period=week"
+
+# Last day
+curl "http://localhost:8000/reports/summary?period=day"
+```
+
+Expected response structure:
+```json
+{
+  "raw": {
+    "total_incidents": 42,
+    "most_failing_plugin": "api-plugin-payments-stripe",
+    "peak_p1_hour": 14,
+    "total_hours_lost": 5.2,
+    "estimated_cost_usd": 780.0,
+    "avg_resolution_time_per_category": {"checkout_failure": 1.4}
+  },
+  "phrases": {
+    "team_summary": "42 incidents...",
+    "villain_phrase": "api-plugin-payments-stripe attacked the scoreboard...",
+    ...
+  }
+}
+```
+
+> **Note:** Requires `NEON_DATABASE_URL` to be set. Without it, `get_all_tickets()` returns empty and stats will show zeros. If `OPENAI_API_KEY` is absent, the `phrases` block uses deterministic fallback text.
+
+---
+
+## Step 10 — Test resolution notification
 
 1. Open the GitHub issue created in Step 5
 2. Close it manually
 3. Wait up to 30 seconds (resolution watcher poll interval)
-4. Check logs for `smtp_notification_sent` or `smtp_mock_mode` event:
+4. Check Slack — the `#tickets-resolved` channel should receive a Block Kit message:
+   ```
+   ✅ Ticket resolved - P1 checkout_failure
+   Ticket: #187  |  Affected Plugin: api-plugin-payments-stripe
+   Resolved Summary: ...
+   ```
+5. Confirm in logs:
    ```bash
-   docker compose logs backend | grep smtp
+   docker compose logs backend | grep slack_resolution
    ```
 
 ---
@@ -211,9 +301,13 @@ Expected result on second submission:
 | No GitHub issue created | Verify `GITHUB_TOKEN` (scope `issues:write`) and `GITHUB_REPO` format (`owner/repo`) |
 | No Slack notification | Verify `SLACK_WEBHOOK_URL` is a valid incoming webhook URL |
 | No Jira ticket | Verify `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY` |
-| No email sent | Check `SMTP_HOST` — if blank, runs in mock mode (check logs) |
+| No resolution notification in Slack | Verify `tickets-resolved` key in `SLACK_TEAM_WEBHOOKS_JSON` (or set `SLACK_RESOLVED_WEBHOOK_URL`); check logs for `slack_resolution_notification_failed` |
 | Empty RAG results | Re-run `python rag/ingest_repo.py` and verify `./chroma_data/` is non-empty |
-| `confidence=0.0` on valid incident | Confirm RAG ingestion ran; vague input short-circuit triggers on `classification_confidence < 0.35` |
+| `confidence=0.0` on valid incident | Confirm RAG ingestion ran; vague input short-circuit triggers on `classification_confidence < 0.35` (bypassed automatically if attachment is present) |
+| Voice: no audio output | Verify `edge-tts` is installed (`pip install edge-tts`); check browser microphone permission |
+| Voice: WebSocket disconnects immediately | Check backend logs: `docker compose logs backend \| grep ws` |
+| Reports: all zeros | Set `NEON_DATABASE_URL` in `.env`; run `python apps/backend/app/db/seed_incidents.py` to populate test data |
+| Reports: `phrases` look plain | Set `OPENAI_API_KEY` for AI-narrated summaries; without it, deterministic fallback phrases are used |
 | Frontend shows nothing | Check backend logs: `docker compose logs backend` |
 | Triage taking >30 s | Check Gemini API key quota — free tier is 15 RPM |
 

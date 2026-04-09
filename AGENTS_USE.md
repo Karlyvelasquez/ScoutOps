@@ -10,7 +10,7 @@
 
 **Evaluation note:** For this hackathon submission, tickets are created in [sre-agent-tickets](https://github.com/Karlyvelasquez/sre-agent-tickets/issues), allowing evaluators to review the full incident triage history. The agent is configurable to use any GitHub repository via the `GITHUB_REPO` environment variable.
 
-**Tech Stack:** Python 3.11 · FastAPI · LangGraph · Google Gemini 2.5 Flash (LLM + Vision) · Chroma (vector DB) · sentence-transformers `all-MiniLM-L6-v2` · GitHub Issues API · Jira REST API · Slack Webhooks · SMTP · Langfuse (tracing) · structlog (JSON logs) · Next.js 14 + Tailwind CSS (frontend)
+**Tech Stack:** Python 3.11 · FastAPI · LangGraph · Google Gemini 2.5 Flash (LLM + Vision) · Chroma (vector DB) · sentence-transformers `all-MiniLM-L6-v2` · GitHub Issues API · Jira REST API · Slack Webhooks (Block Kit, per-team channel routing) · Langfuse (tracing) · structlog (JSON logs) · Next.js 14 + Tailwind CSS (frontend) · WebSocket (voice interface) · edge-tts Microsoft Edge Neural TTS · asyncpg + Neon/PostgreSQL (ticket persistence) · GPT-4o-mini (optional — SRE Wrapped narration)
 
 ---
 
@@ -20,12 +20,12 @@
 
 | Field | Description |
 |-------|-------------|
-| **Role** | End-to-end incident triage: classify → extract entities → retrieve RAG context → analyze attachments → summarize → route with confidence scoring. Escalates to human review if confidence ≤ 0.70. Deduplicates against open GitHub issues before creating new tickets. |
+| **Role** | End-to-end incident triage: classify → extract entities → retrieve RAG context → analyze attachments → summarize → route with confidence scoring. Escalates to human review if confidence ≤ 0.70. Deduplicates against local files and open GitHub issues before creating new tickets. Also accepts voice input (WebSocket) and speaks results back via neural TTS. |
 | **Type** | Semi-autonomous · Human-in-the-loop at ≤ 70% confidence threshold |
 | **LLM** | Google Gemini 2.5 Flash · structured output (JSON schema enforced) · temperature 0.2–0.4 per node |
-| **Inputs** | Incident description (text) · source enum (QA/soporte/monitoring) · optional attachment (image/log file) |
-| **Outputs** | `TriageResult`: incident_type, severity (P1/P2/P3), affected_plugin, assigned_team, layer, summary, suggested_actions, confidence_score, processing_time_ms |
-| **Tools** | GitHub Issues API · Jira REST API · Slack Webhooks · Chroma RAG (codebase retrieval) · Gemini Vision API (image/log analysis) |
+| **Inputs** | Incident description (text) · source enum (QA/soporte/monitoring) · optional attachment (image/log file) · **voice transcript** via `/ws/voice` WebSocket |
+| **Outputs** | `TriageResult`: incident_type, severity (P1/P2/P3), affected_plugin, assigned_team, layer, summary, suggested_actions, confidence_score, processing_time_ms · spoken audio (MP3 stream via edge-tts) |
+| **Tools** | GitHub Issues API · Jira REST API · Slack Webhooks (per-team channels + `#inc-human-review` + `#tickets-resolved`) · Chroma RAG (codebase retrieval) · Gemini Vision API (image/log analysis) · edge-tts neural TTS · Neon/Postgres (ticket history) · GPT-4o-mini (SRE Wrapped narration, optional) |
 
 ---
 
@@ -46,14 +46,16 @@
                               │                           │
                     confidence ≤ 0.70             confidence > 0.70
                               │                           │
-                   ESCALATE (Slack alert)    DEDUP CHECK → GitHub Issue
-                   human review required     + Slack alert + Jira ticket
+                   ESCALATE → Slack          DEDUP CHECK → GitHub Issue
+                   #inc-human-review        + Slack #inc-<team> + Jira ticket
+
+  GitHub/Jira closed → resolution_watcher → notify_resolution() → Slack #tickets-resolved
 ```
 
-- **Orchestration approach:** Sequential LangGraph `StateGraph`. Each node is a pure function `(AgentState) → AgentState`. Linear DAG: classify → extract → retrieve → attachments → summarize → route → END. One short-circuit path: if `vague_input=True` (classification confidence < 0.35), route_node immediately returns `confidence=0.0, escalated=True` without calling the LLM.
+- **Orchestration approach:** Sequential LangGraph `StateGraph`. Each node is a pure function `(AgentState) → AgentState`. Linear DAG: classify → extract → retrieve → attachments → summarize → route → END. One short-circuit path: if `vague_input=True` (classification confidence < 0.35 and no attachment), route_node immediately returns `confidence=0.0, escalated=True` without calling the LLM.
 - **State management:** `AgentState` TypedDict held in-memory for the duration of one triage run, accumulating intermediate results at each node. After completion, the `TriageResult` is persisted as a JSON file and GitHub/Langfuse records the trace.
-- **Error handling:** Every node wraps its logic in `try/except`. On failure it appends to `state["errors"]` and returns a safe default (e.g., `rag_context=[]`, `confidence_score=0.0, escalated=True`). Integration failures (GitHub, Slack, SMTP) are caught and logged without blocking the triage response.
-- **Handoff logic:** Single-agent. Handoff to humans via Slack alert when `confidence ≤ 0.70`. After route_node, the backend calls GitHub → Slack → SMTP sequentially (with graceful fallback per step).
+- **Error handling:** Every node wraps its logic in `try/except`. On failure it appends to `state["errors"]` and returns a safe default (e.g., `rag_context=[]`, `confidence_score=0.0, escalated=True`). Integration failures (GitHub, Slack, Jira) are caught and logged without blocking the triage response.
+- **Handoff logic:** Single-agent. Handoff to humans via Slack `#inc-human-review` when `confidence ≤ 0.70`. After route_node, the backend calls GitHub → Slack team channel sequentially (with graceful fallback per step). When the GitHub/Jira issue is later closed, `resolution_watcher` triggers `notify_resolution()` → Slack `#tickets-resolved`. Voice responses are streamed back to the WebSocket client via edge-tts after the pipeline completes.
 
 ---
 
@@ -69,6 +71,7 @@
   - `attach_analysis` (highest fidelity) → injected into `summarize` prompt if present
   - RAG top-5 results (cosine similarity `1 - d²/2`) → injected into `summarize` + `route` prompts
   - Free-text description → `classify` + `extract` nodes
+  - Voice transcript → cleaned and forwarded to the same pipeline; intent classification (`REPORT_INCIDENT` / `ASK_STATUS` / `CHITCHAT` / etc.) runs first
   - Hybrid confidence: `llm × 0.7 + rag_boost × 0.3` if RAG returns results; otherwise `llm` directly
 
 - **Token management:** Gemini 2.5 Flash 1M-token context. Prompts + RAG injection ≈ 2–3K tokens/request. Temperature tuned per node: classify 0.2, extract/route 0.3, summarize 0.4.
@@ -117,8 +120,29 @@
   4. `attachments_node` → extracts `"TypeError: Cannot read property 'sessionToken' of undefined"` from log
   5. `summarize_node` → injects attachment analysis: "Missing sessionToken in accounts resolver, likely post-deploy regression."
   6. `route_node` → P2 · accounts-team · confidence=0.88 (type + RAG + attachment)
-  7. GitHub issue auto-created with attachment context, Slack alert includes error details.
+  7. GitHub issue auto-created; Slack alert sent to `#inc-accounts` with attachment context.
 - **Expected outcome:** Ticket with full root-cause context; team can start debugging immediately.
+
+### Use Case 5: Voice Incident Report
+
+- **Trigger:** User clicks the microphone button and says: *"Los usuarios no pueden hacer checkout, hay un error 500 en el pago con Stripe"*
+- **Steps:**
+  1. Browser Web Speech API transcribes audio and sends `{type: "transcript", text: "...", lang: "es"}` over WebSocket to `/ws/voice`
+  2. `VoiceIntentHandler` calls Gemini to classify intent → `REPORT_INCIDENT`, `extracted_description` cleaned
+  3. Immediate acknowledgement spoken back: *"Recibido. Estoy analizando el incidente, dame unos segundos."* (edge-tts → MP3 stream)
+  4. Background task creates incident via `AgentService` and runs the full 6-node triage pipeline
+  5. On pipeline completion, result is sent as `{type: "incident_result", data: {...}}` and spoken aloud: *"Incidente P1 asignado a payments-team, confianza 0.90."*
+- **Expected outcome:** Hands-free incident filing in ~10–15 s; result audible without touching keyboard.
+
+### Use Case 6: SRE Wrapped — Monthly Analytics Report
+
+- **Trigger:** `GET /reports/summary?period=month`
+- **Steps:**
+  1. `get_all_tickets()` fetches all rows from Neon/Postgres for the last 30 days
+  2. `_compute_raw_stats()` calculates: total incidents, most failing plugin, peak P1 hour (UTC), avg resolution time per category, total downtime hours, estimated cost at $150/hr
+  3. `_narrate_with_openai()` sends raw stats to GPT-4o-mini with a sports-commentator system prompt → returns dramatic narrative phrases per field
+  4. Fallback: if `OPENAI_API_KEY` is absent, deterministic fallback phrases are used instead
+- **Expected outcome:** JSON with `raw` stats + `phrases` (AI-narrated summaries). Frontend renders as "SRE Wrapped" dashboard card.
 
 ### Use Case 4: Duplicate Incident
 
@@ -134,7 +158,7 @@
 
 ## 6. Observability
 
-- **Logging:** Structured JSON Lines via `structlog`. Every node emits `node_started` / `node_completed` events with `incident_id`, `elapsed_ms`, and node-specific fields (e.g., `incident_type`, `severity`, `top_rag_score`). Written to stdout + `logs/agent.log`.
+- **Logging:** Structured JSON Lines via `structlog`. Every node emits `node_started` / `node_completed` events with `incident_id`, `elapsed_ms`, and node-specific fields (e.g., `incident_type`, `severity`, `top_rag_score`). Written to stdout + `logs/agent.log`. Slack events emit `slack_notification_sent`, `slack_resolution_notification_sent`, or `slack_notification_failed`.
 
 - **Tracing:** Each node is instrumented with `@trace_node` decorator (`observability/tracing.py`), which creates a Langfuse span per node linked to a single trace per request. Spans capture input state snapshot, output diff, latency, and status (success/error).
 
@@ -185,7 +209,7 @@
 
 - **Tool use safety:** GitHub API only creates/comments on issues (never deletes). Issue bodies are fully LLM-generated from the `TriageResult`, not interpolated from raw user input. Slack messages are templated. RAG retrieval is read-only — retrieved code is injected as context, never executed.
 
-- **Data handling:** All API keys loaded from environment variables, never logged or returned in API responses. Reporter email used only for SMTP notification; not exposed in Slack or GitHub payloads. Integration errors are caught and logged without exposing credentials or full stack traces.
+- **Data handling:** All API keys and webhook URLs loaded from environment variables, never logged or returned in API responses. Integration errors are caught and logged without exposing credentials or full stack traces.
 
 ### Evidence
 
@@ -197,6 +221,15 @@ Result: HTTP 400 — {"detail": "Input rejected by security guardrails"}
         Agent never reached, no LLM call made
 ```
 
+**Slack channel routing — per-team delivery:**
+- `payments-team` incident → `#inc-payments`
+- `accounts-team` incident → `#inc-accounts`
+- `catalog-team` incident → `#inc-catalog`
+- `orders-team` incident → `#inc-orders`
+- Low-confidence escalation → `#inc-human-review`
+- GitHub/Jira ticket closed → `#tickets-resolved`
+- Fallback (team not mapped) → `SLACK_WEBHOOK_URL`
+
 **Frontend double-guard — invalid input disables submit button:**
 - On `onBlur` the form calls `POST /validate-input`
 - If `is_valid: false` → amber warning shown + submit button `disabled` + `cursor-not-allowed`
@@ -207,15 +240,17 @@ Result: HTTP 400 — {"detail": "Input rejected by security guardrails"}
 
 ## 8. Scalability
 
-- **Current capacity:** Single-instance FastAPI. ~10–20 concurrent triage requests. Latency 8–15 s/request (LLM-bound). ~240–480 incidents/day (8-hour window).
+- **Current capacity:** Single-instance FastAPI. ~10–20 concurrent triage requests. Latency 8–15 s/request (LLM-bound). ~240–480 incidents/day (8-hour window). WebSocket voice connections: ~50 concurrent (FastAPI async).
 - **Scaling approach:**
   - *Horizontal:* Queue-based workers (Redis/Celery) to decouple ingestion from processing. Multiple FastAPI instances behind a load balancer. Qdrant or Weaviate to replace local Chroma for distributed RAG.
   - *Vertical (short-term):* `uvicorn --workers N`, increase Chroma memory, switch to a faster LLM variant.
   - *Event-driven:* Replace polling `resolution_watcher` with GitHub webhook listener to reduce latency on ticket close notifications.
+  - *Voice:* WebSocket sessions are async and share the event loop; horizontal scaling requires sticky sessions or a shared session store (Redis).
 - **Bottlenecks identified:**
   1. **LLM latency** — 2–4 s per node call (6 nodes = 8–15 s total). Mitigation: async parallel nodes where order allows.
   2. **Chroma single-instance** — no horizontal scaling. Mitigation: Qdrant.
-  3. **GitHub API rate limits** — 5,000 req/hr per token. Mitigation: queue + dedup reduces volume significantly.
+  3. **GitHub API rate limits** — 5,000 req/hr per token. Mitigation: local file dedup runs first, reducing GitHub calls significantly.
+  4. **Neon/Postgres connection pool** — single `asyncpg.connect()` per query. Mitigation: use `asyncpg.create_pool()` for production.
 
 See `SCALING.md` for full architecture and throughput estimates.
 
