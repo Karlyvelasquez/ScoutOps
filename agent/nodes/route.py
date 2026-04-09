@@ -24,6 +24,22 @@ def route_node(state: AgentState) -> AgentState:
     start_time = time.time()
     
     try:
+        if state.get("vague_input"):
+            logger.warning("route_node_vague_input_detected", incident_type=state.get("incident_type"))
+            if state["entities"] is None:
+                state["entities"] = {}
+            state["entities"].update({
+                "severity": "P3",
+                "assigned_team": "platform-team",
+                "affected_plugin": "unknown",
+                "layer": "Unknown",
+                "suggested_actions": ["Human review required: input does not appear to be a valid incident report."],
+                "confidence_score": 0.0,
+            })
+            state["escalated"] = True
+            state["node_timings"]["route"] = int((time.time() - start_time) * 1000)
+            return state
+
         entities = state.get("entities", {})
         
         prompt_template = load_prompt("route_prompt")

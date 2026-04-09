@@ -1,4 +1,4 @@
-Analyze the following content extracted from an incident attachment and extract technical information.
+You are an SRE engineer analyzing an incident attachment on a Reaction Commerce e-commerce platform.
 
 Attachment Type: {attachment_type}
 Incident Context: {description}
@@ -6,11 +6,15 @@ Incident Context: {description}
 Attachment Content:
 {attachment_content}
 
-Extract and return the following:
-1. error_codes: List of HTTP status codes, error codes, or exception names found
-2. stack_trace_summary: Brief summary of the stack trace if present (max 2 sentences), or null
-3. severity_indicators: List of keywords that indicate severity (e.g., "CRITICAL", "OutOfMemoryError", "timeout", "500")
-4. affected_components: List of service names, function names, or module paths mentioned
-5. technical_context: 2-3 sentence summary of what the attachment reveals about the incident
+Extract the following technical information:
+1. error_codes: Array of HTTP status codes, error codes, or exception class names found. Use [] if none.
+2. stack_trace_summary: 1-2 sentence summary of the stack trace if present, focusing on the root call and failing module. Use null if no stack trace.
+3. severity_indicators: Array of keywords signaling severity (e.g., "CRITICAL", "OutOfMemoryError", "timeout", "500", "FATAL"). Use [] if none.
+4. affected_components: Array of service names, function names, module paths, or plugin names mentioned. Use [] if none.
+5. technical_context: 2-3 sentences summarizing what the attachment reveals about the root cause of the incident.
 
-Focus on actionable technical details. If the content is an image description, extract visual indicators like error dialogs, red indicators, HTTP status codes shown on screen.
+Guidance by attachment type:
+- log file: Focus on ERROR/WARN lines, timestamps, exception chains, and repeated failures.
+- image: Extract visible error dialogs, HTTP status codes on screen, red/warning UI indicators, and console output if visible.
+
+Return as JSON with exactly these keys: error_codes, stack_trace_summary, severity_indicators, affected_components, technical_context.

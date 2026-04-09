@@ -4,14 +4,17 @@ import { useState, useRef, ChangeEvent } from "react";
 
 interface ReportFormProps {
   onIncidentCreated: (incidentId: string) => void;
+  isProcessing?: boolean;
 }
 
-export default function ReportForm({ onIncidentCreated }: ReportFormProps) {
+export default function ReportForm({ onIncidentCreated, isProcessing = false }: ReportFormProps) {
   const [description, setDescription] = useState("");
   const [source, setSource] = useState("QA");
   const [reporterEmail, setReporterEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [vagueWarning, setVagueWarning] = useState<string | null>(null);
+  const [validating, setValidating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
@@ -21,6 +24,29 @@ export default function ReportForm({ onIncidentCreated }: ReportFormProps) {
     if (!file) return;
     setFileName(file.name);
     setAttachedFile(file);
+  };
+
+  const handleDescriptionBlur = async () => {
+    if (description.trim().length < 10) return;
+    setValidating(true);
+    setVagueWarning(null);
+    try {
+      const res = await fetch('/api/validate-input', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description, source }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.is_valid) {
+          setVagueWarning(data.reason || 'This input does not look like a valid incident report.');
+        }
+      }
+    } catch {
+      // Silently ignore — validation is non-blocking
+    } finally {
+      setValidating(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,6 +77,7 @@ export default function ReportForm({ onIncidentCreated }: ReportFormProps) {
       setFileName(null);
       setAttachedFile(null);
       setReporterEmail("");
+      setVagueWarning(null);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -76,10 +103,11 @@ export default function ReportForm({ onIncidentCreated }: ReportFormProps) {
         <textarea
           required
           minLength={10}
-          className="w-full h-32 px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors resize-none"
+              className="w-full h-32 px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors resize-none"
           placeholder="Describe el incidente (min 10 caracteres)..."
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(e) => { setDescription(e.target.value); setVagueWarning(null); }}
+          onBlur={handleDescriptionBlur}
         />
       </div>
 
@@ -131,12 +159,32 @@ export default function ReportForm({ onIncidentCreated }: ReportFormProps) {
         </div>
       </div>
 
+      {vagueWarning && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-4 flex items-start space-x-3">
+          <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          <div>
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Input no reconocido como reporte válido</p>
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">{vagueWarning}</p>
+          </div>
+        </div>
+      )}
+
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || validating || isProcessing}
         className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center space-x-2 disabled:bg-blue-400 transition-colors"
       >
-        {loading ? (
+        {validating ? (
+          <>
+            <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span>Validando...</span>
+          </>
+        ) : loading ? (
           <>
             <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />

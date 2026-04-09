@@ -48,6 +48,7 @@ def run_triage_agent(incident_report: IncidentReport) -> TriageResult:
         "technical_summary": None,
         "triage_result": None,
         "escalated": False,
+        "vague_input": False,
         "errors": [],
         "node_timings": {}
     }

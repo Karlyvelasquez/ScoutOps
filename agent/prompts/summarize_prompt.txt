@@ -1,24 +1,27 @@
-Generate a concise technical summary for this incident:
+You are an SRE engineer writing a technical incident summary for a Reaction Commerce e-commerce platform.
 
-Original Report: {description}
+Incident Report: {description}
 Type: {incident_type}
 Affected Service: {affected_service}
 Feature: {feature}
 Error Patterns: {error_patterns}
 User Impact: {user_impact}
 
-Codebase Context (from RAG over Reaction Commerce source):
+Codebase Context (RAG — Reaction Commerce source):
 {rag_context}
 
 Attachment Analysis:
 {attachment_analysis}
 
-Create a 2-3 sentence technical summary that:
-1. States the problem clearly and technically
-2. Mentions the exact affected plugin/component from the codebase context if available
-3. Describes the user impact and business consequence
-4. Incorporates any relevant findings from the attachment if present
+Provide a structured technical summary as JSON with these fields:
 
-Write for a technical audience (engineers). Be specific and actionable.
-Use the codebase context to name exact resolvers, files, or plugins when relevant.
-Do not include recommendations or next steps - just describe the problem.
+1. broken_component: What is broken and where (name the exact plugin, resolver, or file from the codebase context if available). 1-2 sentences.
+2. error_signals: What error signals or symptoms were observed (error codes, patterns, attachment findings). 1-2 sentences.
+3. user_business_impact: What is the user-facing and business impact. 1-2 sentences.
+
+Rules:
+- Audience: engineers. Be precise, use technical terms.
+- Do NOT include recommendations, action items, or next steps.
+- If codebase context is empty or irrelevant, set broken_component to "unknown" or describe the component generically.
+- If attachment analysis is empty or "N/A", omit it from error_signals.
+- Return ONLY valid JSON with exactly these three keys: broken_component, error_signals, user_business_impact.

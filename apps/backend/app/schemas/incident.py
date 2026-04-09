@@ -36,6 +36,7 @@ class TicketInfo(BaseModel):
     ticket_id: str
     status: str
     resolution_notes: Optional[str] = None
+    duplicate_of: Optional[int] = None
     updated_at: datetime
 
 

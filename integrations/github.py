@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 from dotenv import load_dotenv
@@ -105,3 +105,113 @@ def create_ticket(incident: dict[str, Any]) -> dict[str, Any]:
             },
         )
         return {"ticket_id": None, "ticket_url": None, "ticket_number": None}
+
+
+def search_similar_issues(incident_type: str, affected_plugin: str) -> Optional[dict[str, Any]]:
+    """Search open GitHub Issues with matching incident_type and affected_plugin in title.
+
+    Returns the first match as {number, title, html_url}, or None if not found.
+    """
+    load_dotenv()
+
+    github_token = os.getenv("GITHUB_TOKEN", "").strip()
+    github_repo = os.getenv("GITHUB_REPO", "").strip()
+
+    if not github_token or not github_repo or "/" not in github_repo:
+        return None
+
+    query = f"repo:{github_repo} is:issue is:open {incident_type} in:title"
+    headers = {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.get(
+                "https://api.github.com/search/issues",
+                params={"q": query, "per_page": 10},
+                headers=headers,
+            )
+            response.raise_for_status()
+            items = response.json().get("items", [])
+
+        plugin_lower = affected_plugin.lower()
+        type_lower = incident_type.lower()
+        for item in items:
+            title_lower = item.get("title", "").lower()
+            if plugin_lower in title_lower or type_lower in title_lower:
+                result = {
+                    "number": item["number"],
+                    "title": item["title"],
+                    "html_url": item["html_url"],
+                }
+                logger.info(
+                    "github_duplicate_issue_found",
+                    extra={
+                        "service": "integrations",
+                        "node_name": "github.search_similar_issues",
+                        "matched_issue_number": result["number"],
+                    },
+                )
+                return result
+
+        return None
+
+    except Exception:
+        logger.exception(
+            "github_search_issues_failed",
+            extra={"service": "integrations", "node_name": "github.search_similar_issues"},
+        )
+        return None
+
+
+def add_comment_to_issue(issue_number: int, comment: str) -> dict[str, Any]:
+    """Add a comment to an existing GitHub Issue."""
+    load_dotenv()
+
+    github_token = os.getenv("GITHUB_TOKEN", "").strip()
+    github_repo = os.getenv("GITHUB_REPO", "").strip()
+
+    if not github_token or not github_repo or "/" not in github_repo:
+        return {}
+
+    url = f"https://api.github.com/repos/{github_repo}/issues/{issue_number}/comments"
+    headers = {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.post(url, headers=headers, json={"body": comment})
+            response.raise_for_status()
+            data = response.json()
+
+        result = {
+            "comment_id": data.get("id"),
+            "comment_url": data.get("html_url"),
+        }
+        logger.info(
+            "github_comment_added",
+            extra={
+                "service": "integrations",
+                "node_name": "github.add_comment_to_issue",
+                "issue_number": issue_number,
+                "comment_id": result.get("comment_id"),
+            },
+        )
+        return result
+
+    except Exception:
+        logger.exception(
+            "github_add_comment_failed",
+            extra={
+                "service": "integrations",
+                "node_name": "github.add_comment_to_issue",
+                "issue_number": issue_number,
+            },
+        )
+        return {}
