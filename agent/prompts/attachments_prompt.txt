@@ -1,0 +1,16 @@
+Analyze the following content extracted from an incident attachment and extract technical information.
+
+Attachment Type: {attachment_type}
+Incident Context: {description}
+
+Attachment Content:
+{attachment_content}
+
+Extract and return the following:
+1. error_codes: List of HTTP status codes, error codes, or exception names found
+2. stack_trace_summary: Brief summary of the stack trace if present (max 2 sentences), or null
+3. severity_indicators: List of keywords that indicate severity (e.g., "CRITICAL", "OutOfMemoryError", "timeout", "500")
+4. affected_components: List of service names, function names, or module paths mentioned
+5. technical_context: 2-3 sentence summary of what the attachment reveals about the incident
+
+Focus on actionable technical details. If the content is an image description, extract visual indicators like error dialogs, red indicators, HTTP status codes shown on screen.

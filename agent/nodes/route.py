@@ -46,9 +46,13 @@ def route_node(state: AgentState) -> AgentState:
                 "suggested_actions": {
                     "type": "array",
                     "items": {"type": "string"}
+                },
+                "confidence_score": {
+                    "type": "number",
+                    "description": "Confidence in this triage decision from 0.0 to 1.0"
                 }
             },
-            "required": ["severity", "assigned_team", "affected_plugin", "layer", "suggested_actions"]
+            "required": ["severity", "assigned_team", "affected_plugin", "layer", "suggested_actions", "confidence_score"]
         }
         
         response = generate_structured_output(
@@ -59,18 +63,29 @@ def route_node(state: AgentState) -> AgentState:
         
         plugin = response.get("affected_plugin", "api-plugin-unknown")
         team = PLUGIN_TO_TEAM.get(plugin, response.get("assigned_team", "platform-team"))
-        
+
+        llm_confidence = float(response.get("confidence_score", 0.7))
+        rag_context = state.get("rag_context") or []
+        if rag_context:
+            rag_boost = max(r.get("relevance_score", 0.0) for r in rag_context)
+            hybrid_confidence = round(min(1.0, (llm_confidence * 0.7) + (rag_boost * 0.3)), 4)
+        else:
+            hybrid_confidence = round(llm_confidence, 4)
+
         routing_info = {
             "severity": response.get("severity", "P3"),
             "assigned_team": team,
             "affected_plugin": plugin,
             "layer": response.get("layer", "Unknown layer"),
-            "suggested_actions": response.get("suggested_actions", [])
+            "suggested_actions": response.get("suggested_actions", []),
+            "confidence_score": hybrid_confidence,
         }
         
         if state["entities"] is None:
             state["entities"] = {}
         state["entities"].update(routing_info)
+
+        state["escalated"] = hybrid_confidence < 0.70
         
         elapsed_ms = int((time.time() - start_time) * 1000)
         state["node_timings"]["route"] = elapsed_ms
@@ -96,8 +111,10 @@ def route_node(state: AgentState) -> AgentState:
             "assigned_team": "platform-team",
             "affected_plugin": "unknown",
             "layer": "Unknown",
-            "suggested_actions": ["Manual triage required"]
+            "suggested_actions": ["Manual triage required"],
+            "confidence_score": 0.0,
         })
+        state["escalated"] = True
         
         state["node_timings"]["route"] = int((time.time() - start_time) * 1000)
         return state

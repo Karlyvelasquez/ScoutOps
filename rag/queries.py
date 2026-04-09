@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _distance_to_relevance(distance: float) -> float:
-    return 1.0 / (1.0 + max(distance, 0.0))
+    return max(0.0, 1.0 - (max(distance, 0.0) ** 2) / 2.0)
 
 
 def query_codebase(incident_type: str, description: str, n_results: int = 5) -> list[dict[str, Any]]:

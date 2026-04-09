@@ -3,6 +3,7 @@ import json
 import time
 import httpx
 from google import genai
+from google.genai import types as genai_types
 from agent.config import settings
 from agent.utils.logger import logger
 
@@ -84,6 +85,32 @@ def _generate_with_gemini(
     response = model.models.generate_content(
         model=_resolve_model_name("gemini"),
         contents=prompt,
+        config=config,
+    )
+    return response.text.strip()
+
+
+def generate_with_vision(
+    prompt: str,
+    image_bytes: bytes,
+    mime_type: str = "image/png",
+    temperature: Optional[float] = None,
+) -> str:
+    """Send an image + text prompt to Gemini Vision and return the text response."""
+    chosen_temperature = temperature if temperature is not None else settings.temperature
+    model_name = settings.model_name
+
+    image_part = genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+    text_part = genai_types.Part.from_text(text=prompt)
+
+    config = genai_types.GenerateContentConfig(
+        temperature=chosen_temperature,
+        max_output_tokens=settings.max_output_tokens,
+    )
+
+    response = get_gemini_client().models.generate_content(
+        model=model_name,
+        contents=[genai_types.Content(parts=[image_part, text_part])],
         config=config,
     )
     return response.text.strip()

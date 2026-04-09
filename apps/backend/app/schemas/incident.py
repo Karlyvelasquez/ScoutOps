@@ -27,7 +27,7 @@ class IncidentCreateRequest(BaseModel):
 
 class IncidentCreateResponse(BaseModel):
     incident_id: str
-    status: Literal["en_proceso", "completado", "error"]
+    status: Literal["en_proceso", "completado", "escalado_humano", "error"]
 
 
 class TicketInfo(BaseModel):
@@ -43,7 +43,7 @@ class IncidentStatusResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     incident_id: str
-    status: Literal["en_proceso", "completado", "error"]
+    status: Literal["en_proceso", "completado", "escalado_humano", "error"]
     description: str
     source: Literal["QA", "soporte", "monitoring"]
     created_at: datetime

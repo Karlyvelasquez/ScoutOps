@@ -57,6 +57,22 @@ def summarize_node(state: AgentState) -> AgentState:
     try:
         entities = state.get("entities", {})
         
+        rag_context = state.get("rag_context") or []
+        if rag_context:
+            rag_lines = []
+            for item in rag_context[:3]:
+                rag_lines.append(
+                    f"Plugin: {item.get('plugin_name', 'unknown')} | "
+                    f"File: {item.get('file_path', 'unknown')} | "
+                    f"Relevance: {item.get('relevance_score', 0):.2f}\n"
+                    f"{item.get('content', '')[:300]}"
+                )
+            rag_context_str = "\n---\n".join(rag_lines)
+        else:
+            rag_context_str = "No codebase context available."
+
+        attachment_analysis = state.get("attachment_analysis") or "No attachment provided."
+
         prompt_template = load_prompt("summarize_prompt")
         prompt = prompt_template.format(
             description=state["incident_report"].description,
@@ -64,7 +80,9 @@ def summarize_node(state: AgentState) -> AgentState:
             affected_service=entities.get("affected_service", "unknown"),
             feature=entities.get("feature", "unknown"),
             error_patterns=", ".join(entities.get("error_patterns", [])),
-            user_impact=entities.get("user_impact", "Unknown impact")
+            user_impact=entities.get("user_impact", "Unknown impact"),
+            rag_context=rag_context_str,
+            attachment_analysis=attachment_analysis,
         )
         
         schema = {

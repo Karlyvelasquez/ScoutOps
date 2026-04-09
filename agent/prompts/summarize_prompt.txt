@@ -7,10 +7,18 @@ Feature: {feature}
 Error Patterns: {error_patterns}
 User Impact: {user_impact}
 
+Codebase Context (from RAG over Reaction Commerce source):
+{rag_context}
+
+Attachment Analysis:
+{attachment_analysis}
+
 Create a 2-3 sentence technical summary that:
 1. States the problem clearly and technically
-2. Mentions the affected component/service
+2. Mentions the exact affected plugin/component from the codebase context if available
 3. Describes the user impact and business consequence
+4. Incorporates any relevant findings from the attachment if present
 
 Write for a technical audience (engineers). Be specific and actionable.
+Use the codebase context to name exact resolvers, files, or plugins when relevant.
 Do not include recommendations or next steps - just describe the problem.

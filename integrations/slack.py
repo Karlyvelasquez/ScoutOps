@@ -71,14 +71,19 @@ def notify_team(incident: dict[str, Any], ticket_url: str) -> bool:
     incident_type = str(incident.get("incident_type", "Unknown Incident"))
     affected_plugin = str(incident.get("affected_plugin", "unknown"))
     summary = str(incident.get("summary", "No summary provided"))
+    is_escalated = bool(incident.get("escalated", False))
+    confidence = incident.get("confidence_score")
+    confidence_str = f"{float(confidence)*100:.0f}%" if confidence is not None else "N/A"
 
-    blocks = [
+    if is_escalated:
+        header_text = f":warning: HUMAN REVIEW REQUIRED — {severity} Incident: {incident_type}"
+    else:
+        header_text = f"{_severity_emoji(severity)} {severity} Incident: {incident_type}"
+
+    blocks: list[dict[str, Any]] = [
         {
             "type": "header",
-            "text": {
-                "type": "plain_text",
-                "text": f"{_severity_emoji(severity)} {severity} Incident: {incident_type}",
-            },
+            "text": {"type": "plain_text", "text": header_text},
         },
         {
             "type": "section",
@@ -91,7 +96,18 @@ def notify_team(incident: dict[str, Any], ticket_url: str) -> bool:
             "type": "section",
             "text": {"type": "mrkdwn", "text": f"*Summary*\n{summary}"},
         },
-        {
+    ]
+
+    if is_escalated:
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f":lock: *Agent confidence: {confidence_str}* (below 70% threshold). Ticket NOT auto-created. Manual triage required.",
+            },
+        })
+    else:
+        blocks.append({
             "type": "actions",
             "elements": [
                 {
@@ -101,8 +117,7 @@ def notify_team(incident: dict[str, Any], ticket_url: str) -> bool:
                     "style": "primary",
                 }
             ],
-        },
-    ]
+        })
 
     payload = {"blocks": blocks}
 

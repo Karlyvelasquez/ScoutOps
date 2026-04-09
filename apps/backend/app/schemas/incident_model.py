@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class IncidentState(str, Enum):
     EN_PROCESO = "en_proceso"
     COMPLETADO = "completado"
+    ESCALADO_HUMANO = "escalado_humano"
     ERROR = "error"
 
 

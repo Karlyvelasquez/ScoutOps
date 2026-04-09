@@ -1,17 +1,23 @@
 import asyncio
+import shutil
+import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 from app.services.agent_service import AgentService
 from app.services.resolution_watcher import start_resolution_watcher
 from app.schemas.incident import (
-    IncidentCreateRequest,
     IncidentCreateResponse,
     IncidentStatusResponse,
     TicketUpdateRequest,
 )
+from app.security.guardrails import GuardrailViolationError, assert_safe_text, sanitize_text
+
+UPLOAD_DIR = Path("./data/uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @asynccontextmanager
@@ -54,16 +60,48 @@ def read_root():
 
 
 @app.post("/incident", response_model=IncidentCreateResponse)
-def create_incident(request: IncidentCreateRequest, background_tasks: BackgroundTasks):
+async def create_incident(
+    background_tasks: BackgroundTasks,
+    description: str = Form(..., min_length=10),
+    source: str = Form(...),
+    reporter_email: str = Form(default=""),
+    attachment: UploadFile = File(default=None),
+):
+    try:
+        cleaned_description = sanitize_text(description)
+        assert_safe_text(cleaned_description)
+    except GuardrailViolationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if source not in ("QA", "soporte", "monitoring"):
+        raise HTTPException(status_code=422, detail="source must be QA, soporte, or monitoring")
+
+    attachment_path: str | None = None
+    attachment_type: str | None = None
+
+    if attachment and attachment.filename:
+        incident_uid = uuid.uuid4().hex[:12]
+        safe_name = f"{incident_uid}_{Path(attachment.filename).name}"
+        dest = UPLOAD_DIR / safe_name
+        with open(dest, "wb") as f:
+            shutil.copyfileobj(attachment.file, f)
+        attachment_path = str(dest)
+        mime = attachment.content_type or ""
+        attachment_type = "image" if mime.startswith("image/") else "log"
+
     incident_id = agent_service.create_incident(
-        description=request.description,
-        source=request.source,
+        description=cleaned_description,
+        source=source,
+        reporter_email=reporter_email or None,
     )
     background_tasks.add_task(
         agent_service.process_incident_async,
         incident_id,
-        request.description,
-        request.source,
+        cleaned_description,
+        source,
+        attachment_path,
+        attachment_type,
+        reporter_email or None,
     )
     return IncidentCreateResponse(incident_id=incident_id, status="en_proceso")
 
