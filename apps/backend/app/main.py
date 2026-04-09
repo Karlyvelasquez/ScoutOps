@@ -1,10 +1,11 @@
 import asyncio
+import json
 import shutil
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 from app.services.agent_service import AgentService
@@ -61,12 +62,32 @@ def read_root():
 
 @app.post("/incident", response_model=IncidentCreateResponse)
 async def create_incident(
+    request: Request,
     background_tasks: BackgroundTasks,
-    description: str = Form(..., min_length=10),
-    source: str = Form(...),
-    reporter_email: str = Form(default=""),
+    description: str | None = Form(default=None),
+    source: str | None = Form(default=None),
+    reporter_email: str | None = Form(default=""),
     attachment: UploadFile = File(default=None),
 ):
+    if not description or not source:
+        content_type = request.headers.get("content-type", "")
+        if content_type.startswith("application/json"):
+            try:
+                body = await request.json()
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=422, detail=f"invalid JSON body: {exc.msg}")
+            description = description or body.get("description")
+            source = source or body.get("source")
+            if not reporter_email:
+                reporter_email = body.get("reporter_email", "")
+
+    if not description:
+        raise HTTPException(status_code=422, detail="description is required")
+    if not source:
+        raise HTTPException(status_code=422, detail="source is required")
+    if len(description) < 10:
+        raise HTTPException(status_code=422, detail="description must be at least 10 characters")
+
     try:
         cleaned_description = sanitize_text(description)
         assert_safe_text(cleaned_description)
