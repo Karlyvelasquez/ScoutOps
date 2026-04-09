@@ -37,7 +37,7 @@ Open `.env` and fill in the required values:
 # --- Required ---
 GEMINI_API_KEY=...          # or set LLM_PROVIDER=openai + OPENAI_API_KEY
 GITHUB_TOKEN=...            # personal access token, scope: issues:write
-GITHUB_REPO=owner/repo      # e.g. myorg/sre-incidents
+GITHUB_REPO=owner/repo      # e.g. Karlyvelasquez/sre-agent-tickets (or your own repo)
 
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 
@@ -216,3 +216,13 @@ Expected result on second submission:
 | `confidence=0.0` on valid incident | Confirm RAG ingestion ran; vague input short-circuit triggers on `classification_confidence < 0.35` |
 | Frontend shows nothing | Check backend logs: `docker compose logs backend` |
 | Triage taking >30 s | Check Gemini API key quota — free tier is 15 RPM |
+
+---
+
+## GitHub Repository Configuration
+
+By default, ScoutOps creates tickets in the repository specified by `GITHUB_REPO` in `.env`. 
+
+**For evaluation:** This project demonstrates ticket creation in [sre-agent-tickets](https://github.com/Karlyvelasquez/sre-agent-tickets/issues). You can view the full incident history and triage decisions there.
+
+**For your own use:** Simply change `GITHUB_REPO` to any repository you own (e.g., `myorg/incident-tracker`). The agent is completely agnostic — it works with any GitHub repo where your token has `issues:write` permissions. No changes to the code are needed.

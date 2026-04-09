@@ -108,6 +108,8 @@ python rag/ingest_repo.py   # index Reaction Commerce codebase into Chroma
 docker compose up --build   # frontend :3000  backend :8000  chroma :8001
 ```
 
+> **Note on GitHub repo configuration:** By default, tickets are created in the repo specified by `GITHUB_REPO` in `.env`. For evaluation purposes, this project uses [sre-agent-tickets](https://github.com/Karlyvelasquez/sre-agent-tickets/issues) as the demo repository. You can configure your own repo by changing `GITHUB_REPO` — the agent is agnostic to which repository receives the tickets.
+
 ## Folder Structure
 
 ```text
