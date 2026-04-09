@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 from app.db.database import init_db
 from app.models.incident import IncidentSubmission
-from app.routes import incident_router
+from app.routes import incident_router, reports_router
 from app.services.agent_service import AgentService
 from app.services.resolution_watcher import start_resolution_watcher
 from app.schemas.incident import (
@@ -55,6 +55,7 @@ app.add_middleware(
 )
 
 app.include_router(incident_router)
+app.include_router(reports_router)
 
 agent_service = AgentService()
 
