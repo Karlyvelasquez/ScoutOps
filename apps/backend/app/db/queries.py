@@ -35,6 +35,43 @@ async def insert_ticket(ticket: dict[str, Any]) -> None:
     await _ensure_schema()
     connection = await _connect()
     try:
+        github_ticket_number = ticket.get("github_ticket_number")
+        if github_ticket_number is not None:
+            await connection.execute(
+                """
+                INSERT INTO tickets (
+                    id,
+                    incident_type,
+                    severity,
+                    affected_plugin,
+                    summary,
+                    original_description,
+                    status,
+                    github_ticket_url,
+                    github_ticket_number,
+                    jira_ticket_url,
+                    jira_ticket_key,
+                    created_at,
+                    resolved_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                ON CONFLICT DO NOTHING
+                """,
+                str(ticket.get("id", "")),
+                ticket.get("incident_type"),
+                ticket.get("severity"),
+                ticket.get("affected_plugin"),
+                ticket.get("summary"),
+                ticket.get("original_description"),
+                ticket.get("status", "open"),
+                ticket.get("github_ticket_url"),
+                github_ticket_number,
+                ticket.get("jira_ticket_url"),
+                ticket.get("jira_ticket_key"),
+                ticket.get("created_at"),
+                ticket.get("resolved_at"),
+            )
+            return
+
         await connection.execute(
             """
             INSERT INTO tickets (
@@ -75,7 +112,7 @@ async def insert_ticket(ticket: dict[str, Any]) -> None:
             ticket.get("original_description"),
             ticket.get("status", "open"),
             ticket.get("github_ticket_url"),
-            ticket.get("github_ticket_number"),
+            github_ticket_number,
             ticket.get("jira_ticket_url"),
             ticket.get("jira_ticket_key"),
             ticket.get("created_at"),

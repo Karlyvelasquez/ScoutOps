@@ -20,6 +20,19 @@ CREATE TABLE IF NOT EXISTS tickets (
 );
 """
 
+DEDUP_GITHUB_TICKETS_SQL = """
+DELETE FROM tickets t
+USING tickets d
+WHERE t.github_ticket_number IS NOT NULL
+    AND d.github_ticket_number = t.github_ticket_number
+    AND d.created_at < t.created_at;
+"""
+
+UNQ_GITHUB_TICKET_NUMBER_SQL = """
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tickets_github_ticket_number
+ON tickets(github_ticket_number);
+"""
+
 IDX_STATUS_SQL = """
 CREATE INDEX IF NOT EXISTS idx_status ON tickets(status);
 """
@@ -30,6 +43,8 @@ CREATE INDEX IF NOT EXISTS idx_created_at ON tickets(created_at);
 
 SCHEMA_SQL: tuple[str, ...] = (
     TICKETS_TABLE_SQL,
+    DEDUP_GITHUB_TICKETS_SQL,
+    UNQ_GITHUB_TICKET_NUMBER_SQL,
     IDX_STATUS_SQL,
     IDX_CREATED_AT_SQL,
 )
