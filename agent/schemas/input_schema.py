@@ -8,7 +8,6 @@ class IncidentReport(BaseModel):
     source: Literal["QA", "soporte", "monitoring"] = Field(..., description="Fuente del reporte")
     attachment_path: Optional[str] = Field(None, description="Ruta al archivo adjunto guardado en el servidor")
     attachment_type: Optional[Literal["image", "log"]] = Field(None, description="Tipo del adjunto: imagen o log")
-    reporter_email: Optional[str] = Field(None, description="Email del reportero para notificación de resolución")
     timestamp: datetime = Field(default_factory=datetime.now, description="Timestamp del reporte")
     
     class Config:
@@ -17,7 +16,6 @@ class IncidentReport(BaseModel):
                 "description": "Users getting 500 error when trying to pay with credit card",
                 "source": "QA",
                 "attachment_path": None,
-                "attachment_type": None,
-                "reporter_email": "engineer@company.com"
+                "attachment_type": None
             }
         }

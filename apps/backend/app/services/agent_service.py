@@ -5,6 +5,7 @@ import os
 from typing import Optional
 from datetime import datetime, timezone
 from uuid import uuid4
+from app.db.queries import insert_ticket
 from agent.graph import run_triage_agent
 from agent.schemas.input_schema import IncidentReport
 from agent.schemas.output_schema import TriageResult
@@ -36,7 +37,6 @@ class AgentService:
         self,
         description: str,
         source: str,
-        reporter_email: Optional[str] = None,
     ) -> str:
         cleaned_description = sanitize_text(description)
         assert_safe_text(cleaned_description)
@@ -65,7 +65,6 @@ class AgentService:
         source: str,
         attachment_path: Optional[str] = None,
         attachment_type: Optional[str] = None,
-        reporter_email: Optional[str] = None,
     ) -> None:
         incident = self._load_incident(incident_id)
         if incident is None:
@@ -80,7 +79,6 @@ class AgentService:
                 source=source,
                 attachment_path=attachment_path,
                 attachment_type=attachment_type,
-                reporter_email=reporter_email,
             )
             start_time = datetime.now(timezone.utc)
             result = run_triage_agent(incident_report)
@@ -88,7 +86,6 @@ class AgentService:
 
             rag_response = RAGResponse.from_triage_result(result.model_dump())
 
-            effective_reporter_email = reporter_email or "unknown@example.com"
             incident_payload = {
                 "incident_id": incident_id,
                 "incident_type": result.incident_type,
@@ -98,7 +95,6 @@ class AgentService:
                 "assigned_team": result.assigned_team,
                 "summary": result.summary,
                 "suggested_actions": result.suggested_actions,
-                "reporter_email": effective_reporter_email,
                 "original_description": cleaned_description,
                 "confidence_score": result.confidence_score,
             }
@@ -121,6 +117,11 @@ class AgentService:
 
             existing_issue = self._find_local_duplicate(result.incident_type) or search_similar_issues(result.incident_type, result.affected_plugin)
 
+            github_ticket_url = None
+            jira_ticket_url = None
+            ticket_number = None
+            jira_ticket_key = None
+
             if existing_issue:
                 dedup_comment = self._build_dedup_comment(incident_payload, existing_issue)
                 add_comment_to_issue(existing_issue["number"], dedup_comment)
@@ -132,6 +133,8 @@ class AgentService:
                     updated_at=end_time,
                 )
                 ticket_url = existing_issue["html_url"]
+                github_ticket_url = existing_issue["html_url"]
+                ticket_number = existing_issue["number"]
                 notify_team({**incident_payload, "duplicate_of": existing_issue["number"]}, ticket_url)
             else:
                 github_ticket = create_github_ticket(incident_payload)
@@ -143,7 +146,6 @@ class AgentService:
 
                 ticket_number = github_ticket.get("ticket_number")
                 if ticket_number:
-                    self._save_issue_reporter_mapping(str(ticket_number), effective_reporter_email)
                     incident.ticket = IncidentTicket(
                         ticket_id=str(ticket_number),
                         status="open",
@@ -151,15 +153,36 @@ class AgentService:
                         updated_at=end_time,
                     )
                 elif jira_ticket.get("ticket_key"):
+                    jira_ticket_key = jira_ticket.get("ticket_key")
                     incident.ticket = IncidentTicket(
-                        ticket_id=str(jira_ticket.get("ticket_key")),
+                        ticket_id=str(jira_ticket_key),
                         status="open",
                         resolution_notes=None,
                         updated_at=end_time,
                     )
+                else:
+                    jira_ticket_key = jira_ticket.get("ticket_key")
 
                 if ticket_url:
                     notify_team(incident_payload, str(ticket_url))
+
+            self._run_async_insert_ticket(
+                {
+                    "id": incident_id,
+                    "incident_type": result.incident_type,
+                    "severity": result.severity,
+                    "affected_plugin": result.affected_plugin,
+                    "summary": result.summary,
+                    "original_description": cleaned_description,
+                    "status": "open",
+                    "github_ticket_url": github_ticket_url,
+                    "github_ticket_number": ticket_number,
+                    "jira_ticket_url": jira_ticket_url,
+                    "jira_ticket_key": jira_ticket_key,
+                    "created_at": end_time.isoformat(),
+                    "resolved_at": None,
+                }
+            )
 
             incident.state = IncidentState.COMPLETADO
             incident.rag_response = rag_response
@@ -189,6 +212,19 @@ class AgentService:
                 loop.close()
         except Exception:
             return {"ticket_id": None, "ticket_url": None, "ticket_key": None}
+
+    def _run_async_insert_ticket(self, ticket_data: dict) -> None:
+        try:
+            asyncio.run(insert_ticket(ticket_data))
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(insert_ticket(ticket_data))
+            finally:
+                loop.close()
+        except Exception:
+            # Ticket history persistence failures should not block incident lifecycle.
+            pass
     
     def process_incident(self, description: str, source: str) -> TriageResult:
         incident_report = IncidentReport(
@@ -294,7 +330,6 @@ class AgentService:
             "## New Incident Report (Possible Duplicate)\n\n"
             f"- **Incident ID:** {incident.get('incident_id')}\n"
             f"- **Severity:** {incident.get('severity')}\n"
-            f"- **Reporter:** {incident.get('reporter_email', 'unknown')}\n"
             f"- **Confidence Score:** {incident.get('confidence_score')}\n\n"
             "### Description\n"
             f"{incident.get('original_description', '')}\n\n"
@@ -302,26 +337,6 @@ class AgentService:
             f"{incident.get('summary', '')}\n"
         )
 
-    def _save_issue_reporter_mapping(self, ticket_number: str, reporter_email: str) -> None:
-        mapping_file = Path(__file__).resolve().parents[2] / "data" / "issue_reporters.json"
-        mapping_file.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            if mapping_file.exists():
-                with open(mapping_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if not isinstance(data, dict):
-                    data = {}
-            else:
-                data = {}
-        except Exception:
-            data = {}
-
-        data[str(ticket_number)] = reporter_email
-
-        with open(mapping_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-    
     def get_incident(self, incident_id: str) -> Optional[TriageResult]:
         file_path = self.results_dir / f"{incident_id}.json"
         

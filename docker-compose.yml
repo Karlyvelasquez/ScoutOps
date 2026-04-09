@@ -26,6 +26,8 @@ services:
       dockerfile: apps/backend/Dockerfile
     ports:
       - "8000:8000"
+    volumes:
+      - ./data:/app/data
     depends_on:
       vector-db:
         condition: service_healthy

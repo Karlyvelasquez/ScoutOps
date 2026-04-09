@@ -46,7 +46,7 @@ For the ScoutOps SRE Incident Triage Agent system.
 │                     INCIDENT REPORT (FastAPI)                       │
 │  source: "QA" | "soporte" | "monitoring"                            │
 │  description: "Users getting 402 errors on checkout..."             │
-│  reporter_email: "ops@company.com"                                  │
+│  source: "soporte"                                                  │
 │  attachment: (optional) image/log file                              │
 └────────────────────────────┬────────────────────────────────────────┘
                              │

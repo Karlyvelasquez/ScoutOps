@@ -23,7 +23,7 @@ flowchart LR
 The triage pipeline runs as a LangGraph `StateGraph` with 6 sequential nodes. Each node is independently traced via `@trace_node` (Langfuse) and logs structured JSON on completion.
 
 ```
-Input: { description, source, attachment?, reporter_email? }
+Input: { description, source, attachment? }
   │
   ▼
 [1] classify_node        → incident_type: checkout_failure | login_error | catalog_issue | ...

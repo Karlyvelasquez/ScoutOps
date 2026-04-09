@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, ChangeEvent } from "react";
+import { useState, useRef } from "react";
 
 interface ReportFormProps {
   onIncidentCreated: (incidentId: string) => void;
@@ -10,7 +10,6 @@ interface ReportFormProps {
 export default function ReportForm({ onIncidentCreated, isProcessing = false }: ReportFormProps) {
   const [description, setDescription] = useState("");
   const [source, setSource] = useState("QA");
-  const [reporterEmail, setReporterEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [vagueWarning, setVagueWarning] = useState<string | null>(null);
@@ -58,7 +57,6 @@ export default function ReportForm({ onIncidentCreated, isProcessing = false }: 
       const formData = new FormData();
       formData.append("description", description);
       formData.append("source", source);
-      if (reporterEmail) formData.append("reporter_email", reporterEmail);
       if (attachedFile) formData.append("attachment", attachedFile);
 
       const res = await fetch("/api/incident", {
@@ -76,7 +74,6 @@ export default function ReportForm({ onIncidentCreated, isProcessing = false }: 
       setDescription("");
       setFileName(null);
       setAttachedFile(null);
-      setReporterEmail("");
       setVagueWarning(null);
     } catch (err: any) {
       setError(err.message);
@@ -122,17 +119,6 @@ export default function ReportForm({ onIncidentCreated, isProcessing = false }: 
           <option value="soporte">Soporte</option>
           <option value="monitoring">Monitoring</option>
         </select>
-      </div>
-
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Email (Opcional)</label>
-        <input
-          type="email"
-          className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-          placeholder="tu@empresa.com — para notificación de resolución"
-          value={reporterEmail}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => setReporterEmail(e.target.value)}
-        />
       </div>
 
       <div className="space-y-2">

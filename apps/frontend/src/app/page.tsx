@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect } from "react";
 import ReportForm from "@/components/ReportForm";
 import ResultView from "@/components/ResultView";
@@ -108,6 +109,14 @@ export default function Home() {
     <main className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-50 p-6 md:p-12">
       <div className="max-w-4xl mx-auto space-y-8">
         <header className="mb-10 text-center">
+          <div className="flex justify-end mb-3">
+            <Link
+              href="/history"
+              className="inline-flex items-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600"
+            >
+              Dashboard
+            </Link>
+          </div>
           <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-2">
             ScoutOps SRE Agent
           </h1>

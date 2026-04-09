@@ -10,6 +10,9 @@ from pydantic import BaseModel as PydanticBaseModel
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
+from app.db.database import init_db
+from app.models.incident import IncidentSubmission
+from app.routes import incident_router
 from app.services.agent_service import AgentService
 from app.services.resolution_watcher import start_resolution_watcher
 from app.schemas.incident import (
@@ -25,6 +28,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    await init_db()
     watcher_task = asyncio.create_task(start_resolution_watcher())
     try:
         yield
@@ -49,6 +53,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(incident_router)
 
 agent_service = AgentService()
 
@@ -118,7 +124,6 @@ async def create_incident(
     background_tasks: BackgroundTasks,
     description: str | None = Form(default=None),
     source: str | None = Form(default=None),
-    reporter_email: str | None = Form(default=""),
     attachment: UploadFile = File(default=None),
 ):
     if not description or not source:
@@ -130,24 +135,20 @@ async def create_incident(
                 raise HTTPException(status_code=422, detail=f"invalid JSON body: {exc.msg}")
             description = description or body.get("description")
             source = source or body.get("source")
-            if not reporter_email:
-                reporter_email = body.get("reporter_email", "")
-
-    if not description:
-        raise HTTPException(status_code=422, detail="description is required")
-    if not source:
-        raise HTTPException(status_code=422, detail="source is required")
-    if len(description) < 10:
-        raise HTTPException(status_code=422, detail="description must be at least 10 characters")
 
     try:
-        cleaned_description = sanitize_text(description)
+        submission = IncidentSubmission(
+            description=description,
+            source=source,
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors())
+
+    try:
+        cleaned_description = sanitize_text(submission.description)
         assert_safe_text(cleaned_description)
     except GuardrailViolationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-
-    if source not in ("QA", "soporte", "monitoring"):
-        raise HTTPException(status_code=422, detail="source must be QA, soporte, or monitoring")
 
     attachment_path: str | None = None
     attachment_type: str | None = None
@@ -164,17 +165,15 @@ async def create_incident(
 
     incident_id = agent_service.create_incident(
         description=cleaned_description,
-        source=source,
-        reporter_email=reporter_email or None,
+        source=submission.source,
     )
     background_tasks.add_task(
         agent_service.process_incident_async,
         incident_id,
         cleaned_description,
-        source,
+        submission.source,
         attachment_path,
         attachment_type,
-        reporter_email or None,
     )
     return IncidentCreateResponse(incident_id=incident_id, status="en_proceso")
 

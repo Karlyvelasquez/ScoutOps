@@ -73,10 +73,10 @@ def notify_team(incident: dict[str, Any], ticket_url: str) -> bool:
     summary = str(incident.get("summary", "No summary provided"))
     is_escalated = bool(incident.get("escalated", False))
     confidence = incident.get("confidence_score")
-    confidence_str = f"{float(confidence)*100:.0f}%" if confidence is not None else "N/A"
+    confidence_str = f"{float(confidence) * 100:.0f}%" if confidence is not None else "N/A"
 
     if is_escalated:
-        header_text = f":warning: HUMAN REVIEW REQUIRED — {severity} Incident: {incident_type}"
+        header_text = f":warning: HUMAN REVIEW REQUIRED - {severity} Incident: {incident_type}"
     else:
         header_text = f"{_severity_emoji(severity)} {severity} Incident: {incident_type}"
 
@@ -99,25 +99,32 @@ def notify_team(incident: dict[str, Any], ticket_url: str) -> bool:
     ]
 
     if is_escalated:
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f":lock: *Agent confidence: {confidence_str}* (below 70% threshold). Ticket NOT auto-created. Manual triage required.",
-            },
-        })
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f":lock: *Agent confidence: {confidence_str}* (below 70% threshold). "
+                        "Ticket NOT auto-created. Manual triage required."
+                    ),
+                },
+            }
+        )
     else:
-        blocks.append({
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Open Ticket"},
-                    "url": ticket_url,
-                    "style": "primary",
-                }
-            ],
-        })
+        blocks.append(
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Open Ticket"},
+                        "url": ticket_url,
+                        "style": "primary",
+                    }
+                ],
+            }
+        )
 
     payload = {"blocks": blocks}
 

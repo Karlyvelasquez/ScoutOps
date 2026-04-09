@@ -1,4 +1,4 @@
-"""Async email integration used to notify incident reporters after resolution."""
+"""Async email integration used to notify incident recipients after resolution."""
 
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ def _smtp_is_configured(host: str, port: int, user: str, password: str) -> bool:
     return bool(host and port and user and password)
 
 
-async def notify_reporter(reporter_email: str, ticket_url: str, resolution_summary: str) -> bool:
-    """Notify the incident reporter that their ticket has been resolved."""
+async def notify_reporter(recipient_email: str, ticket_url: str, resolution_summary: str) -> bool:
+    """Notify the incident recipient that their ticket has been resolved."""
     load_dotenv()
 
     smtp_host = os.getenv("SMTP_HOST", "").strip()
@@ -33,7 +33,7 @@ async def notify_reporter(reporter_email: str, ticket_url: str, resolution_summa
                 "service": "integrations",
                 "node_name": "email.notify_reporter",
                 "incident_id": None,
-                "reporter_email": reporter_email,
+                "recipient_email": recipient_email,
                 "ticket_url": ticket_url,
             },
         )
@@ -41,7 +41,7 @@ async def notify_reporter(reporter_email: str, ticket_url: str, resolution_summa
 
     message = EmailMessage()
     message["From"] = smtp_user
-    message["To"] = reporter_email
+    message["To"] = recipient_email
     message["Subject"] = "Your incident report has been resolved"
     message.set_content(
         "Hello,\n\n"
@@ -69,7 +69,7 @@ async def notify_reporter(reporter_email: str, ticket_url: str, resolution_summa
                 "service": "integrations",
                 "node_name": "email.notify_reporter",
                 "incident_id": None,
-                "reporter_email": reporter_email,
+                "recipient_email": recipient_email,
             },
         )
         return True
@@ -80,7 +80,7 @@ async def notify_reporter(reporter_email: str, ticket_url: str, resolution_summa
                 "service": "integrations",
                 "node_name": "email.notify_reporter",
                 "incident_id": None,
-                "reporter_email": reporter_email,
+                "recipient_email": recipient_email,
             },
         )
         return False

@@ -25,6 +25,7 @@ class IncidentCreateRequest(BaseModel):
         return cleaned
 
 
+
 class IncidentCreateResponse(BaseModel):
     incident_id: str
     status: Literal["en_proceso", "completado", "escalado_humano", "error"]
