@@ -54,7 +54,9 @@ def classify_node(state: AgentState) -> AgentState:
         incident_type = response.get("incident_type", "unknown")
         classification_confidence = float(response.get("classification_confidence", 1.0))
         
-        is_vague = classification_confidence < 0.35
+        # If an attachment is present, never flag as vague — the file is the report
+        has_attachment = bool(state["incident_report"].attachment_path)
+        is_vague = (classification_confidence < 0.35) and not has_attachment
         
         state["incident_type"] = incident_type
         state["vague_input"] = is_vague

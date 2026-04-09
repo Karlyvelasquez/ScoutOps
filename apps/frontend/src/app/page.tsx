@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import ReportForm from "@/components/ReportForm";
 import ResultView from "@/components/ResultView";
 import TicketStatus from "@/components/TicketStatus";
+import VoiceInput from "@/components/VoiceInput";
 
 export default function Home() {
   const [incidentId, setIncidentId] = useState<string | null>(null);
@@ -132,8 +133,27 @@ export default function Home() {
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-5">
+          <div className="lg:col-span-5 flex flex-col gap-6">
             <ReportForm onIncidentCreated={handleIncidentCreated} isProcessing={isPolling} />
+
+            {/* Voice channel */}
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 flex flex-col items-center gap-3">
+              <div className="flex items-center gap-2 self-start">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                  Asistente de Voz
+                </h2>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
+                Describe el incidente en voz — en español o inglés
+              </p>
+              <VoiceInput
+                onIncidentCreated={handleIncidentCreated}
+                onIncidentResult={(data) => {
+                  if (data) setIncidentData(data);
+                }}
+              />
+            </div>
           </div>
 
           <div className="lg:col-span-7">

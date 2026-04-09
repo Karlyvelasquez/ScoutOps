@@ -1,0 +1,54 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Node
+node_modules
+apps/frontend/.next
+apps/frontend/out
+
+# Python
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv
+.venv
+env
+*.egg-info
+.eggs
+dist
+build
+*.dist-info
+
+# Runtime data (mounted as volumes at runtime)
+data/
+chroma_data/
+
+# Environment files (injected by docker-compose env_file)
+.env
+.env.*
+!.env.example
+
+# Dev/test artifacts
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+coverage.xml
+htmlcov/
+*.log
+*.tmp
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Docs
+*.md
+!README.md

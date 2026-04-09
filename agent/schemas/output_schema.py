@@ -14,6 +14,7 @@ class TriageResult(BaseModel):
     suggested_actions: List[str] = Field(..., description="Acciones sugeridas para resolver")
     confidence_score: float = Field(..., ge=0.0, le=1.0, description="Confianza del análisis")
     processing_time_ms: int = Field(..., description="Tiempo de procesamiento en ms")
+    attachment_analysis: Optional[str] = Field(None, description="Análisis de imagen o log adjunto")
     
     class Config:
         json_schema_extra = {

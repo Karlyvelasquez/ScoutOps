@@ -19,12 +19,54 @@ export default function ReportForm({ onIncidentCreated, isProcessing = false }: 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  const MAX_FILE_MB = 10;
+  const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif", ".log", "text/plain", "application/json", "text/csv"];
+
+  const validateAndSetFile = (file: File) => {
+    setFileError(null);
+    if (file.size > MAX_FILE_MB * 1024 * 1024) {
+      setFileError(`El archivo supera el límite de ${MAX_FILE_MB} MB.`);
+      return;
+    }
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const isImage = file.type.startsWith("image/");
+    const isLog = ["log", "txt", "csv", "json", "out", "err"].includes(ext);
+    if (!isImage && !isLog) {
+      setFileError("Tipo de archivo no soportado. Usa imágenes o archivos de log (.log, .txt, .json, .csv).");
+      return;
+    }
+    setFileName(file.name);
+    setAttachedFile(file);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setFileName(file.name);
-    setAttachedFile(file);
+    validateAndSetFile(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    validateAndSetFile(file);
   };
 
   const handleDescriptionBlur = async () => {
@@ -104,12 +146,15 @@ export default function ReportForm({ onIncidentCreated, isProcessing = false }: 
       )}
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Descripción</label>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+          Descripción
+          {attachedFile && <span className="ml-2 text-xs text-slate-400 font-normal">(opcional si adjuntas evidencia)</span>}
+        </label>
         <textarea
-          required
-          minLength={10}
-              className="w-full h-32 px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors resize-none"
-          placeholder="Describe el incidente (min 10 caracteres)..."
+          required={!attachedFile}
+          minLength={attachedFile ? 0 : 10}
+          className="w-full h-32 px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors resize-none"
+          placeholder={attachedFile ? "Contexto adicional (opcional)..." : "Describe el incidente (min 10 caracteres)..."}
           value={description}
           onChange={(e) => { setDescription(e.target.value); setVagueWarning(null); setInputInvalid(false); }}
           onBlur={handleDescriptionBlur}
@@ -133,22 +178,58 @@ export default function ReportForm({ onIncidentCreated, isProcessing = false }: 
         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Evidencia (Opcional)</label>
         <div
           onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg p-6 text-center cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
+            isDragging
+              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 scale-[1.01]"
+              : fileError
+              ? "border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-900/10"
+              : fileName
+              ? "border-green-400 dark:border-green-600 bg-green-50 dark:bg-green-900/10"
+              : "border-slate-300 dark:border-slate-600 hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+          }`}
         >
           <input
             type="file"
             className="hidden"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept=".log,image/*"
+            accept=".log,.txt,.csv,.json,.out,.err,image/*"
           />
           <div className="flex flex-col items-center space-y-2">
-            <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-              {fileName ? fileName : "Arrastra un archivo o haz clic para subir (.log o imágenes)"}
+            {fileError ? (
+              <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : fileName ? (
+              <svg className="w-8 h-8 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : (
+              <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            )}
+            <span className={`text-sm font-medium ${fileError ? "text-red-500 dark:text-red-400" : fileName ? "text-green-700 dark:text-green-400" : "text-slate-600 dark:text-slate-400"}`}>
+              {fileError
+                ? fileError
+                : fileName
+                ? fileName
+                : isDragging
+                ? "Suelta el archivo aquí..."
+                : "Arrastra un archivo o haz clic para subir (imagen, .log, .txt, .json, .csv)"}
             </span>
+            {fileName && !fileError && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setFileName(null); setAttachedFile(null); setFileError(null); }}
+                className="text-xs text-slate-400 hover:text-red-500 transition-colors"
+              >
+                Eliminar archivo
+              </button>
+            )}
           </div>
         </div>
       </div>

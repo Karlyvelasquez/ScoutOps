@@ -33,6 +33,7 @@ class RAGResponse(BaseModel):
     assigned_team: str = Field(...)
     confidence_score: float = Field(..., ge=0.0, le=1.0)
     processing_time_ms: int = Field(default=0)
+    attachment_analysis: Optional[str] = Field(None, description="Resultado del análisis de imagen o log adjunto")
 
     @classmethod
     def from_triage_result(cls, triage_result: dict) -> "RAGResponse":
@@ -55,6 +56,7 @@ class RAGResponse(BaseModel):
             assigned_team=triage_result.get("assigned_team", ""),
             confidence_score=triage_result.get("confidence_score", 0.0),
             processing_time_ms=triage_result.get("processing_time_ms", 0),
+            attachment_analysis=triage_result.get("attachment_analysis"),
         )
 
 
