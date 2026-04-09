@@ -13,6 +13,7 @@ export default function ReportForm({ onIncidentCreated, isProcessing = false }: 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [vagueWarning, setVagueWarning] = useState<string | null>(null);
+  const [inputInvalid, setInputInvalid] = useState(false);
   const [validating, setValidating] = useState(false);
   const submittingRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -40,6 +41,9 @@ export default function ReportForm({ onIncidentCreated, isProcessing = false }: 
         const data = await res.json();
         if (!data.is_valid) {
           setVagueWarning(data.reason || 'This input does not look like a valid incident report.');
+          setInputInvalid(true);
+        } else {
+          setInputInvalid(false);
         }
       }
     } catch {
@@ -107,7 +111,7 @@ export default function ReportForm({ onIncidentCreated, isProcessing = false }: 
               className="w-full h-32 px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors resize-none"
           placeholder="Describe el incidente (min 10 caracteres)..."
           value={description}
-          onChange={(e) => { setDescription(e.target.value); setVagueWarning(null); }}
+          onChange={(e) => { setDescription(e.target.value); setVagueWarning(null); setInputInvalid(false); }}
           onBlur={handleDescriptionBlur}
         />
       </div>
@@ -163,8 +167,9 @@ export default function ReportForm({ onIncidentCreated, isProcessing = false }: 
 
       <button
         type="submit"
-        disabled={loading || isProcessing}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center space-x-2 disabled:bg-blue-400 transition-colors"
+        disabled={loading || isProcessing || inputInvalid}
+        title={inputInvalid ? 'Corrige la descripción antes de enviar' : undefined}
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {loading ? (
           <>

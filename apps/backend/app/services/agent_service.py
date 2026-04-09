@@ -101,7 +101,7 @@ class AgentService:
 
             CONFIDENCE_THRESHOLD = 0.70
 
-            if result.confidence_score < CONFIDENCE_THRESHOLD:
+            if result.confidence_score <= CONFIDENCE_THRESHOLD:
                 if result.confidence_score > 0.0:
                     notify_team(
                         {**incident_payload, "escalated": True},
