@@ -22,7 +22,7 @@ export default function Home() {
         const data = await res.json();
         setIncidentData(data);
 
-        if (data.status === "completado" || data.status === "error") {
+        if (data.status === "completado" || data.status === "escalado_humano" || data.status === "error") {
           setIsPolling(false);
           clearInterval(intervalId);
 
@@ -112,7 +112,27 @@ export default function Home() {
               </div>
             )}
 
-            {incidentData?.result && (
+            {incidentData?.status === "escalado_humano" && incidentData?.result && (
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-4">
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl p-6">
+                  <div className="flex items-start space-x-3">
+                    <svg className="w-7 h-7 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                    <div>
+                      <h3 className="text-lg font-bold text-amber-800 dark:text-amber-300">Escalado — Revisión Humana Requerida</h3>
+                      <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+                        El agente tiene una confianza de <strong>{((incidentData.result.confidence_score || 0) * 100).toFixed(0)}%</strong> (umbral: 70%). 
+                        No se creó ticket automáticamente. El equipo de SRE ha sido notificado vía Slack para revisión manual.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <ResultView result={incidentData.result} />
+              </div>
+            )}
+
+            {incidentData?.result && incidentData?.status !== "escalado_humano" && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <ResultView result={incidentData.result} />
                 <TicketStatus 

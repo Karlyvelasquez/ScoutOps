@@ -27,7 +27,12 @@ class AgentService:
         self.results_dir = Path(results_dir)
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
-    def create_incident(self, description: str, source: str) -> str:
+    def create_incident(
+        self,
+        description: str,
+        source: str,
+        reporter_email: Optional[str] = None,
+    ) -> str:
         cleaned_description = sanitize_text(description)
         assert_safe_text(cleaned_description)
 
@@ -48,7 +53,15 @@ class AgentService:
         self._save_incident(incident)
         return incident_id
 
-    def process_incident_async(self, incident_id: str, description: str, source: str) -> None:
+    def process_incident_async(
+        self,
+        incident_id: str,
+        description: str,
+        source: str,
+        attachment_path: Optional[str] = None,
+        attachment_type: Optional[str] = None,
+        reporter_email: Optional[str] = None,
+    ) -> None:
         incident = self._load_incident(incident_id)
         if incident is None:
             return
@@ -57,14 +70,20 @@ class AgentService:
             cleaned_description = sanitize_text(description)
             assert_safe_text(cleaned_description)
 
-            incident_report = IncidentReport(description=cleaned_description, source=source)
+            incident_report = IncidentReport(
+                description=cleaned_description,
+                source=source,
+                attachment_path=attachment_path,
+                attachment_type=attachment_type,
+                reporter_email=reporter_email,
+            )
             start_time = datetime.now(timezone.utc)
             result = run_triage_agent(incident_report)
             end_time = datetime.now(timezone.utc)
 
             rag_response = RAGResponse.from_triage_result(result.model_dump())
 
-            reporter_email = "unknown@example.com"
+            effective_reporter_email = reporter_email or "unknown@example.com"
             incident_payload = {
                 "incident_id": incident_id,
                 "incident_type": result.incident_type,
@@ -74,9 +93,26 @@ class AgentService:
                 "assigned_team": result.assigned_team,
                 "summary": result.summary,
                 "suggested_actions": result.suggested_actions,
-                "reporter_email": reporter_email,
+                "reporter_email": effective_reporter_email,
                 "original_description": cleaned_description,
+                "confidence_score": result.confidence_score,
             }
+
+            CONFIDENCE_THRESHOLD = 0.70
+
+            if result.confidence_score < CONFIDENCE_THRESHOLD:
+                notify_team(
+                    {**incident_payload, "escalated": True},
+                    "https://github.com",
+                )
+                incident.state = IncidentState.ESCALADO_HUMANO
+                incident.rag_response = rag_response
+                incident.metadata.started_processing_at = start_time
+                incident.metadata.completed_at = end_time
+                incident.metadata.updated_at = end_time
+                self._save_incident(incident)
+                return
+
             github_ticket = create_github_ticket(incident_payload)
             jira_ticket = self._run_async_jira_ticket(incident_payload)
 
@@ -86,7 +122,7 @@ class AgentService:
 
             ticket_number = github_ticket.get("ticket_number")
             if ticket_number:
-                self._save_issue_reporter_mapping(str(ticket_number), reporter_email)
+                self._save_issue_reporter_mapping(str(ticket_number), effective_reporter_email)
                 incident.ticket = IncidentTicket(
                     ticket_id=str(ticket_number),
                     status="open",

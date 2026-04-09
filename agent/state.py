@@ -8,9 +8,12 @@ class AgentState(TypedDict):
     
     incident_type: Optional[str]
     entities: Optional[Dict[str, Any]]
+    rag_context: Optional[List[Dict[str, Any]]]
+    attachment_analysis: Optional[str]
     technical_summary: Optional[str]
     
     triage_result: Optional[TriageResult]
+    escalated: bool
     
     errors: List[str]
     node_timings: Dict[str, int]

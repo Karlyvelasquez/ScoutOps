@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, ChangeEvent } from "react";
 
 interface ReportFormProps {
   onIncidentCreated: (incidentId: string) => void;
@@ -9,21 +9,18 @@ interface ReportFormProps {
 export default function ReportForm({ onIncidentCreated }: ReportFormProps) {
   const [description, setDescription] = useState("");
   const [source, setSource] = useState("QA");
+  const [reporterEmail, setReporterEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setFileName(file.name);
-
-    if (file.name.endsWith(".log") || file.type === "text/plain") {
-      const text = await file.text();
-      setDescription((prev) => prev + "\n\n--- ARCHIVO LOG AÑADIDO ---\n" + text);
-    }
+    setAttachedFile(file);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -32,21 +29,28 @@ export default function ReportForm({ onIncidentCreated }: ReportFormProps) {
     setError(null);
 
     try {
+      const formData = new FormData();
+      formData.append("description", description);
+      formData.append("source", source);
+      if (reporterEmail) formData.append("reporter_email", reporterEmail);
+      if (attachedFile) formData.append("attachment", attachedFile);
+
       const res = await fetch("/api/incident", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description, source }),
+        body: formData,
       });
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.details || "Error al crear el incidente");
+        throw new Error(errorData.details || errorData.error || "Error al crear el incidente");
       }
 
       const data = await res.json();
       onIncidentCreated(data.incident_id);
       setDescription("");
       setFileName(null);
+      setAttachedFile(null);
+      setReporterEmail("");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -90,6 +94,17 @@ export default function ReportForm({ onIncidentCreated }: ReportFormProps) {
           <option value="soporte">Soporte</option>
           <option value="monitoring">Monitoring</option>
         </select>
+      </div>
+
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Email (Opcional)</label>
+        <input
+          type="email"
+          className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+          placeholder="tu@empresa.com — para notificación de resolución"
+          value={reporterEmail}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setReporterEmail(e.target.value)}
+        />
       </div>
 
       <div className="space-y-2">

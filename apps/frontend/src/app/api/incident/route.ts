@@ -4,16 +4,14 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    
     const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
+
+    const formData = await request.formData();
+
     const response = await fetch(`${backendUrl}/incident`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      body: formData,
       cache: 'no-store',
-      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
