@@ -71,6 +71,7 @@ class IncidentTicket(BaseModel):
     ticket_id: str = Field(...)
     status: Literal["open", "in_progress", "resolved", "closed"] = Field(default="open")
     resolution_notes: Optional[str] = Field(None)
+    duplicate_of: Optional[int] = Field(None, description="Issue number this was deduplicated into")
     updated_at: datetime = Field(...)
 
 

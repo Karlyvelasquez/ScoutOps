@@ -1,4 +1,6 @@
-Assign severity, team, and suggested actions for this incident:
+You are an SRE engineer routing an incident on a Reaction Commerce e-commerce platform to the correct team.
+
+Assign severity, team, plugin, and suggested actions for this incident:
 
 Incident Type: {incident_type}
 Summary: {summary}
@@ -25,9 +27,10 @@ Determine:
 
 5. suggested_actions: List 3-4 specific debugging steps or actions to take
 
-6. confidence_score: Score your triage decision by summing these criteria:
+6. confidence_score: Score your triage decision by summing these criteria.
+   NOTE: This only applies to valid incident reports. Vague/invalid inputs are pre-filtered by classify_node and escalated before reaching this node.
 
-   START at 0.50 (baseline for any incident).
+   START at 0.50 (baseline for valid incidents).
 
    ADD points based on evidence quality:
    +0.15 if the incident_type is unambiguously clear (not "unknown")

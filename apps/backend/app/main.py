@@ -5,6 +5,8 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel as PydanticBaseModel
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
@@ -57,6 +59,56 @@ def read_root():
         "service": "SRE Agent API",
         "status": "running",
         "version": "1.0.0"
+    }
+
+
+class ValidateInputRequest(PydanticBaseModel):
+    description: str
+    source: str = "QA"
+
+
+@app.post("/validate-input")
+def validate_input(request: ValidateInputRequest):
+    from agent.nodes.classify import classify_node
+    from agent.schemas.input_schema import IncidentReport
+
+    try:
+        cleaned = sanitize_text(request.description)
+    except Exception:
+        return {"is_valid": False, "classification_confidence": 0.0, "reason": "Input could not be sanitized."}
+
+    incident_report = IncidentReport(description=cleaned, source=request.source)
+    state = {
+        "incident_report": incident_report,
+        "incident_type": None,
+        "entities": None,
+        "rag_context": None,
+        "attachment_analysis": None,
+        "technical_summary": None,
+        "triage_result": None,
+        "escalated": False,
+        "vague_input": False,
+        "errors": [],
+        "node_timings": {},
+    }
+    try:
+        result = classify_node(state)
+    except Exception:
+        return {"is_valid": True, "classification_confidence": 1.0, "reason": "Validation unavailable, proceeding."}
+
+    is_vague = result.get("vague_input", False)
+    if is_vague:
+        confidence = 0.15
+        reason = "The input does not appear to be a valid incident report. Please describe a specific technical issue."
+    else:
+        confidence = 0.85
+        reason = "Input looks like a valid incident report."
+
+    return {
+        "is_valid": not is_vague,
+        "classification_confidence": confidence,
+        "incident_type": result.get("incident_type", "unknown"),
+        "reason": reason,
     }
 
 

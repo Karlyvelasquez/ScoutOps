@@ -49,8 +49,29 @@ export default function Home() {
     setIsCreatingTicket(true);
     try {
       const result = data.result;
-      const title = `[${result.severity}] ${result.incident_type}: ${result.affected_plugin || 'General'}`;
-      const body = `**Resumen:**\n${result.summary}\n\n**Acciones Sugeridas:**\n${result.suggested_actions?.map((a: string) => `- ${a}`).join('\n')}\n\n**Contexto:**\n- Fuente: ${data.source}\n- ID: ${data.incident_id}`;
+      const title = `[${result.severity}] ${result.incident_type} — ${result.affected_plugin || 'General'}`;
+      const actionsBlock = result.suggested_actions?.length
+        ? result.suggested_actions.map((a: string) => `- ${a}`).join('\n')
+        : '- No suggestions provided';
+      const body = [
+        '## Incident Triage Report',
+        '',
+        `- **Incident Type:** ${result.incident_type || 'unknown'}`,
+        `- **Severity:** ${result.severity || 'unknown'}`,
+        `- **Affected Plugin:** ${result.affected_plugin || 'unknown'}`,
+        `- **Layer:** ${result.layer || 'unknown'}`,
+        `- **Assigned Team:** ${result.assigned_team || 'unknown'}`,
+        `- **Reporter Email:** ${data.reporter_email || 'unknown'}`,
+        '',
+        '### Summary',
+        result.summary || '',
+        '',
+        '### Suggested Actions',
+        actionsBlock,
+        '',
+        '### Original Description',
+        data.description || '',
+      ].join('\n');
 
       const res = await fetch('/api/github', {
         method: 'POST',
@@ -97,7 +118,7 @@ export default function Home() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-5">
-            <ReportForm onIncidentCreated={handleIncidentCreated} />
+            <ReportForm onIncidentCreated={handleIncidentCreated} isProcessing={isPolling} />
           </div>
 
           <div className="lg:col-span-7">
@@ -112,25 +133,39 @@ export default function Home() {
               </div>
             )}
 
-            {incidentData?.status === "escalado_humano" && incidentData?.result && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-4">
-                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl p-6">
-                  <div className="flex items-start space-x-3">
-                    <svg className="w-7 h-7 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                    </svg>
-                    <div>
-                      <h3 className="text-lg font-bold text-amber-800 dark:text-amber-300">Escalado — Revisión Humana Requerida</h3>
-                      <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
-                        El agente tiene una confianza de <strong>{((incidentData.result.confidence_score || 0) * 100).toFixed(0)}%</strong> (umbral: 70%). 
-                        No se creó ticket automáticamente. El equipo de SRE ha sido notificado vía Slack para revisión manual.
-                      </p>
+            {incidentData?.status === "escalado_humano" && incidentData?.result && (() => {
+              const isVague = (incidentData.result.confidence_score ?? 0) === 0;
+              return (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-4">
+                  <div className={`border rounded-xl p-6 ${isVague ? "bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700" : "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700"}`}>
+                    <div className="flex items-start space-x-3">
+                      <svg className={`w-7 h-7 flex-shrink-0 mt-0.5 ${isVague ? "text-red-500" : "text-amber-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                      </svg>
+                      <div>
+                        {isVague ? (
+                          <>
+                            <h3 className="text-lg font-bold text-red-800 dark:text-red-300">Descripción no reconocida</h3>
+                            <p className="text-sm text-red-700 dark:text-red-400 mt-1">
+                              El agente no pudo identificar un incidente válido en esta descripción. No se creó ticket ni se envió notificación. Por favor, describe un problema técnico específico.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <h3 className="text-lg font-bold text-amber-800 dark:text-amber-300">Escalado — Revisión Humana Requerida</h3>
+                            <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+                              El agente tiene una confianza de <strong>{((incidentData.result.confidence_score || 0) * 100).toFixed(0)}%</strong> (umbral: 70%).
+                              No se creó ticket automáticamente. El equipo de SRE ha sido notificado vía Slack para revisión manual.
+                            </p>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
+                  <ResultView result={incidentData.result} />
                 </div>
-                <ResultView result={incidentData.result} />
-              </div>
-            )}
+              );
+            })()}
 
             {incidentData?.result && incidentData?.status !== "escalado_humano" && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">

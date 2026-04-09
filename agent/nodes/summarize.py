@@ -7,30 +7,41 @@ from agent.utils.llm_client import generate_structured_output
 from observability.tracing import trace_node
 
 
-def _normalize_summary(value: object) -> str:
+def _normalize_summary(value: object, _depth: int = 0) -> str:
     if isinstance(value, str):
         text = value.strip()
         if text.startswith("{") and text.endswith("}"):
             try:
                 parsed = json.loads(text)
-                return _normalize_summary(parsed)
+                return _normalize_summary(parsed, _depth)
             except json.JSONDecodeError:
                 return text
         return text
     if isinstance(value, dict):
-        # Common OpenAI/LLM shape where the final text may be nested.
-        for key in ("summary", "problem", "description", "text", "message"):
+        # Priority: well-known top-level string keys.
+        for key in ("summary", "problem", "description", "text", "message", "technical_context"):
             nested = value.get(key)
-            if isinstance(nested, str):
-                return nested
-        technical_summary = value.get("technical_summary")
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip()
+        # Structured shape: technical_summary dict with problem/component/impact sub-keys.
+        technical_summary = value.get("technical_summary") or value.get("incident_summary")
         if isinstance(technical_summary, dict):
-            problem = technical_summary.get("problem")
-            component = technical_summary.get("affected_component")
-            impact = technical_summary.get("user_impact")
-            if all(isinstance(x, str) and x.strip() for x in (problem, component, impact)):
-                return f"{problem} Affected component: {component}. User impact: {impact}"
-        return json.dumps(value, ensure_ascii=False)
+            problem = technical_summary.get("problem") or technical_summary.get("broken_component")
+            component = technical_summary.get("affected_component") or technical_summary.get("error_signals")
+            impact = technical_summary.get("user_impact") or technical_summary.get("user_business_impact")
+            parts = [p for p in (problem, component, impact) if isinstance(p, str) and p.strip() and p.strip() != "unknown"]
+            if parts:
+                return " ".join(parts)
+        # Recursive fallback: depth-limited walk of all values looking for longest useful string.
+        if _depth < 3:
+            candidates: list[str] = []
+            for v in value.values():
+                result = _normalize_summary(v, _depth + 1)
+                if result and result != "Unable to generate summary" and len(result) > 20:
+                    candidates.append(result)
+            if candidates:
+                return max(candidates, key=len)
+        return ""
     if value is None:
         return "Unable to generate summary"
     return str(value)
@@ -88,9 +99,11 @@ def summarize_node(state: AgentState) -> AgentState:
         schema = {
             "type": "object",
             "properties": {
-                "summary": {"type": "string"}
+                "broken_component": {"type": "string"},
+                "error_signals": {"type": "string"},
+                "user_business_impact": {"type": "string"},
             },
-            "required": ["summary"]
+            "required": ["broken_component", "error_signals", "user_business_impact"]
         }
         
         response = generate_structured_output(
@@ -99,14 +112,20 @@ def summarize_node(state: AgentState) -> AgentState:
             temperature=0.4
         )
         
-        raw_summary_value: object
         if isinstance(response, dict):
-            raw_summary_value = response.get("summary", response)
+            broken = response.get("broken_component", "").strip()
+            signals = response.get("error_signals", "").strip()
+            impact = response.get("user_business_impact", "").strip()
+            
+            parts = [p for p in (broken, signals, impact) if p and p.lower() != "unknown"]
+            if parts:
+                summary = " ".join(parts)
+            else:
+                summary = ""
         else:
-            raw_summary_value = response
-
-        summary = _normalize_summary(raw_summary_value)
-        if not summary or summary == "Unable to generate summary":
+            summary = _normalize_summary(response)
+        
+        if not summary or summary == "Unable to generate summary" or summary.startswith("{"):
             summary = _build_fallback_summary(state, entities)
             logger.warning("summarize_node_used_fallback_summary")
         

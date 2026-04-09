@@ -1,12 +1,12 @@
-Extract technical entities from this incident report:
+You are an SRE engineer extracting technical entities from an incident report on a Reaction Commerce e-commerce platform.
 
 Description: {description}
 Incident Type: {incident_type}
 
-Extract the following information:
-1. affected_service: Which service/component is affected (e.g., "payment", "catalog", "cart", "authentication", "inventory")
-2. feature: Specific feature mentioned (e.g., "checkout", "product search", "login", "add to cart")
-3. error_patterns: List of error messages, status codes, or symptoms mentioned (e.g., ["timeout", "500 error", "Stripe API"])
-4. user_impact: Brief description of how users are affected (1-2 sentences)
+Extract the following fields:
+1. affected_service: The service or component affected. Use one of: "payment", "catalog", "cart", "authentication", "inventory", "shipping", "performance", "unknown". Infer from incident_type if not explicit.
+2. feature: The specific feature involved (e.g., "checkout flow", "product search", "login form", "add to cart", "shipping rate calculator"). Infer from context if not stated.
+3. error_patterns: Array of error messages, HTTP status codes, exception names, or observable symptoms mentioned in the description. Use [] if none are mentioned.
+4. user_impact: 1-2 sentences describing how end users are affected and the business consequence (e.g., blocked purchases, lost sessions, wrong prices shown).
 
-Return as JSON with these exact keys. If information is not available, use reasonable defaults based on the incident type.
+Return as JSON with exactly these keys: affected_service, feature, error_patterns, user_impact.

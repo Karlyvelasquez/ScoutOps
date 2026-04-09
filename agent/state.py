@@ -14,6 +14,7 @@ class AgentState(TypedDict):
     
     triage_result: Optional[TriageResult]
     escalated: bool
+    vague_input: bool
     
     errors: List[str]
     node_timings: Dict[str, int]

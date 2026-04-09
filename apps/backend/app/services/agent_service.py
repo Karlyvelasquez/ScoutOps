@@ -1,13 +1,18 @@
 from pathlib import Path
 import json
 import asyncio
+import os
 from typing import Optional
 from datetime import datetime, timezone
 from uuid import uuid4
 from agent.graph import run_triage_agent
 from agent.schemas.input_schema import IncidentReport
 from agent.schemas.output_schema import TriageResult
-from integrations.github import create_ticket as create_github_ticket
+from integrations.github import (
+    create_ticket as create_github_ticket,
+    search_similar_issues,
+    add_comment_to_issue,
+)
 from integrations.jira import create_ticket as create_jira_ticket
 from integrations.slack import notify_team
 from app.security.guardrails import assert_safe_text, sanitize_text
@@ -101,10 +106,11 @@ class AgentService:
             CONFIDENCE_THRESHOLD = 0.70
 
             if result.confidence_score < CONFIDENCE_THRESHOLD:
-                notify_team(
-                    {**incident_payload, "escalated": True},
-                    "https://github.com",
-                )
+                if result.confidence_score > 0.0:
+                    notify_team(
+                        {**incident_payload, "escalated": True},
+                        "https://github.com",
+                    )
                 incident.state = IncidentState.ESCALADO_HUMANO
                 incident.rag_response = rag_response
                 incident.metadata.started_processing_at = start_time
@@ -113,32 +119,47 @@ class AgentService:
                 self._save_incident(incident)
                 return
 
-            github_ticket = create_github_ticket(incident_payload)
-            jira_ticket = self._run_async_jira_ticket(incident_payload)
+            existing_issue = self._find_local_duplicate(result.incident_type) or search_similar_issues(result.incident_type, result.affected_plugin)
 
-            github_ticket_url = github_ticket.get("ticket_url")
-            jira_ticket_url = jira_ticket.get("ticket_url")
-            ticket_url = github_ticket_url or jira_ticket_url
-
-            ticket_number = github_ticket.get("ticket_number")
-            if ticket_number:
-                self._save_issue_reporter_mapping(str(ticket_number), effective_reporter_email)
+            if existing_issue:
+                dedup_comment = self._build_dedup_comment(incident_payload, existing_issue)
+                add_comment_to_issue(existing_issue["number"], dedup_comment)
                 incident.ticket = IncidentTicket(
-                    ticket_id=str(ticket_number),
+                    ticket_id=str(existing_issue["number"]),
                     status="open",
-                    resolution_notes=None,
+                    resolution_notes=f"Deduplicated into existing issue #{existing_issue['number']}: {existing_issue['title']}",
+                    duplicate_of=existing_issue["number"],
                     updated_at=end_time,
                 )
-            elif jira_ticket.get("ticket_key"):
-                incident.ticket = IncidentTicket(
-                    ticket_id=str(jira_ticket.get("ticket_key")),
-                    status="open",
-                    resolution_notes=None,
-                    updated_at=end_time,
-                )
+                ticket_url = existing_issue["html_url"]
+                notify_team({**incident_payload, "duplicate_of": existing_issue["number"]}, ticket_url)
+            else:
+                github_ticket = create_github_ticket(incident_payload)
+                jira_ticket = self._run_async_jira_ticket(incident_payload)
 
-            if ticket_url:
-                notify_team(incident_payload, str(ticket_url))
+                github_ticket_url = github_ticket.get("ticket_url")
+                jira_ticket_url = jira_ticket.get("ticket_url")
+                ticket_url = github_ticket_url or jira_ticket_url
+
+                ticket_number = github_ticket.get("ticket_number")
+                if ticket_number:
+                    self._save_issue_reporter_mapping(str(ticket_number), effective_reporter_email)
+                    incident.ticket = IncidentTicket(
+                        ticket_id=str(ticket_number),
+                        status="open",
+                        resolution_notes=None,
+                        updated_at=end_time,
+                    )
+                elif jira_ticket.get("ticket_key"):
+                    incident.ticket = IncidentTicket(
+                        ticket_id=str(jira_ticket.get("ticket_key")),
+                        status="open",
+                        resolution_notes=None,
+                        updated_at=end_time,
+                    )
+
+                if ticket_url:
+                    notify_team(incident_payload, str(ticket_url))
 
             incident.state = IncidentState.COMPLETADO
             incident.rag_response = rag_response
@@ -233,6 +254,53 @@ class AgentService:
         
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(result_dict, f, indent=2, default=str)
+
+    def _find_local_duplicate(self, incident_type: str) -> Optional[dict]:
+        """Scan local incident files for an existing completed incident with the same
+        incident_type that already has an open GitHub ticket. Returns a dict compatible
+        with the shape expected by the dedup path: {number, title, html_url}."""
+        for file_path in sorted(self.results_dir.glob("*.json"), reverse=True)[:100]:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                continue
+            if data.get("state") != IncidentState.COMPLETADO.value:
+                continue
+            ticket = data.get("ticket")
+            if not ticket or ticket.get("duplicate_of") is not None:
+                continue
+            rag = data.get("rag_response") or {}
+            if rag.get("incident_type") != incident_type:
+                continue
+            ticket_id = ticket.get("ticket_id")
+            if not ticket_id:
+                continue
+            try:
+                issue_number = int(ticket_id)
+            except (ValueError, TypeError):
+                continue
+            github_repo = os.getenv("GITHUB_REPO", "")
+            html_url = f"https://github.com/{github_repo}/issues/{issue_number}" if github_repo else ""
+            return {
+                "number": issue_number,
+                "title": f"[Existing] {incident_type} (local dedup)",
+                "html_url": html_url,
+            }
+        return None
+
+    def _build_dedup_comment(self, incident: dict, existing_issue: dict) -> str:
+        return (
+            "## New Incident Report (Possible Duplicate)\n\n"
+            f"- **Incident ID:** {incident.get('incident_id')}\n"
+            f"- **Severity:** {incident.get('severity')}\n"
+            f"- **Reporter:** {incident.get('reporter_email', 'unknown')}\n"
+            f"- **Confidence Score:** {incident.get('confidence_score')}\n\n"
+            "### Description\n"
+            f"{incident.get('original_description', '')}\n\n"
+            "### Agent Summary\n"
+            f"{incident.get('summary', '')}\n"
+        )
 
     def _save_issue_reporter_mapping(self, ticket_number: str, reporter_email: str) -> None:
         mapping_file = Path(__file__).resolve().parents[2] / "data" / "issue_reporters.json"

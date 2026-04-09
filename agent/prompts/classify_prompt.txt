@@ -4,14 +4,21 @@ Given this incident report:
 Description: {description}
 Source: {source}
 
-Classify it into ONE of these types:
+Classify it into ONE of these incident types:
 - checkout_failure: Payment or order completion issues, transaction errors, payment gateway problems
 - login_error: Authentication or account access problems, session issues, password problems
 - catalog_issue: Product display, search, pricing issues, product data problems
 - cart_issue: Shopping cart functionality problems, items not adding, cart not loading
 - inventory_issue: Stock availability or reservation problems, backorder issues
 - shipping_issue: Delivery calculation or provider problems, shipping rate errors
-- performance_issue: Slow response times, timeouts, high latency
-- unknown: Cannot determine from description
+- performance_issue: Slow response times, timeouts, high latency, memory pressure
+- unknown: Cannot determine from the description
 
-Analyze the description carefully and return ONLY the incident type as a single word (e.g., "checkout_failure").
+Also score classification_confidence (0.0 to 1.0) indicating how confident you are that this is a real, actionable incident report:
+- 0.90-1.00: Clear, specific technical report with error details, stack traces, or status codes
+- 0.70-0.89: Recognizable incident with enough context to classify
+- 0.50-0.69: Vague but plausibly an incident; type is uncertain
+- 0.30-0.49: Very vague, almost no technical context, or could be a non-incident
+- 0.00-0.29: Not an incident report (spam, random words, test input, off-topic)
+
+Return JSON with exactly these two keys: incident_type, classification_confidence.
