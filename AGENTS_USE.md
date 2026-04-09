@@ -8,6 +8,8 @@
 
 **Purpose:** Automatically triage e-commerce SRE incidents from raw user reports into actionable GitHub issues with severity, team assignment, and root-cause context. The agent classifies incident types, extracts technical entities, retrieves relevant codebase context via RAG, and routes to the correct engineering team. When confidence is ≤ 70%, it escalates to human review instead of auto-creating a ticket, preventing false positives and reducing SRE toil.
 
+**Evaluation note:** For this hackathon submission, tickets are created in [sre-agent-tickets](https://github.com/Karlyvelasquez/sre-agent-tickets/issues), allowing evaluators to review the full incident triage history. The agent is configurable to use any GitHub repository via the `GITHUB_REPO` environment variable.
+
 **Tech Stack:** Python 3.11 · FastAPI · LangGraph · Google Gemini 2.5 Flash (LLM + Vision) · Chroma (vector DB) · sentence-transformers `all-MiniLM-L6-v2` · GitHub Issues API · Jira REST API · Slack Webhooks · SMTP · Langfuse (tracing) · structlog (JSON logs) · Next.js 14 + Tailwind CSS (frontend)
 
 ---
