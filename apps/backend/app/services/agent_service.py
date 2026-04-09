@@ -1,12 +1,14 @@
 from pathlib import Path
 import json
+import asyncio
 from typing import Optional
 from datetime import datetime, timezone
 from uuid import uuid4
 from agent.graph import run_triage_agent
 from agent.schemas.input_schema import IncidentReport
 from agent.schemas.output_schema import TriageResult
-from integrations.github import create_ticket
+from integrations.github import create_ticket as create_github_ticket
+from integrations.jira import create_ticket as create_jira_ticket
 from integrations.slack import notify_team
 from app.security.guardrails import assert_safe_text, sanitize_text
 from app.schemas.incident_model import (
@@ -75,14 +77,25 @@ class AgentService:
                 "reporter_email": reporter_email,
                 "original_description": cleaned_description,
             }
-            ticket_info = create_ticket(incident_payload)
-            ticket_url = ticket_info.get("ticket_url")
+            github_ticket = create_github_ticket(incident_payload)
+            jira_ticket = self._run_async_jira_ticket(incident_payload)
 
-            ticket_number = ticket_info.get("ticket_number")
+            github_ticket_url = github_ticket.get("ticket_url")
+            jira_ticket_url = jira_ticket.get("ticket_url")
+            ticket_url = github_ticket_url or jira_ticket_url
+
+            ticket_number = github_ticket.get("ticket_number")
             if ticket_number:
                 self._save_issue_reporter_mapping(str(ticket_number), reporter_email)
                 incident.ticket = IncidentTicket(
                     ticket_id=str(ticket_number),
+                    status="open",
+                    resolution_notes=None,
+                    updated_at=end_time,
+                )
+            elif jira_ticket.get("ticket_key"):
+                incident.ticket = IncidentTicket(
+                    ticket_id=str(jira_ticket.get("ticket_key")),
                     status="open",
                     resolution_notes=None,
                     updated_at=end_time,
@@ -107,6 +120,18 @@ class AgentService:
             )
             incident.metadata.updated_at = now
             self._save_incident(incident)
+
+    def _run_async_jira_ticket(self, incident_payload: dict) -> dict:
+        try:
+            return asyncio.run(create_jira_ticket(incident_payload))
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(create_jira_ticket(incident_payload))
+            finally:
+                loop.close()
+        except Exception:
+            return {"ticket_id": None, "ticket_url": None, "ticket_key": None}
     
     def process_incident(self, description: str, source: str) -> TriageResult:
         incident_report = IncidentReport(

@@ -1,6 +1,8 @@
 from agent.graph import run_triage_agent
+import asyncio
 from agent.schemas.input_schema import IncidentReport
 from integrations.github import create_ticket
+from integrations.jira import create_ticket as create_jira_ticket
 from integrations.slack import notify_team
 from rag.queries import query_codebase
 
@@ -28,11 +30,16 @@ incident = {
 
 print("INFERRED_TRIAGE:", triage.model_dump())
 
-ticket = create_ticket(incident)
-print("TICKET_RESULT:", ticket)
+github_ticket = create_ticket(incident)
+print("GITHUB_TICKET_RESULT:", github_ticket)
 
-if ticket.get("ticket_url"):
-    sent = notify_team(incident, ticket["ticket_url"])
+jira_ticket = asyncio.run(create_jira_ticket(incident))
+print("JIRA_TICKET_RESULT:", jira_ticket)
+
+ticket_url_for_slack = github_ticket.get("ticket_url") or jira_ticket.get("ticket_url")
+
+if ticket_url_for_slack:
+    sent = notify_team(incident, ticket_url_for_slack)
     print("SLACK_RESULT:", sent)
 else:
     print("SLACK_RESULT: skipped (no ticket_url)")
