@@ -7,6 +7,7 @@ ScoutOps is an end-to-end incident triage system for e-commerce operations that 
 ```mermaid
 flowchart LR
     A[Incident Report\nText + Attachments] --> B[Backend API\nFastAPI]
+    V[Voice Interface\nWebSocket + Web Speech] --> B
     B --> C[Agent Orchestrator\nLangGraph]
     C --> D[RAG Query Layer\nChroma + MiniLM]
     D --> E[Reaction Commerce KB\napi-plugin-* chunks]
@@ -14,9 +15,10 @@ flowchart LR
     C --> G[Slack Integration\nTeam Notification]
     C --> L[Jira Integration\nCreate Ticket]
     H[Resolution Watcher\nPoll Closed Issues] --> F
-    H --> I[Reporter Mapping Store]
-    H --> J[Email Integration\nSMTP / Mock]
+    H --> S2[Slack #tickets-resolved\nResolution Alert]
     C --> K[Langfuse Tracing + JSON Logs]
+    B --> N[Neon/Postgres\nTicket History]
+    N --> R[SRE Reports\nWrapped Analytics]
 ```
 
 ## Agent Pipeline
@@ -24,11 +26,12 @@ flowchart LR
 The triage pipeline runs as a LangGraph `StateGraph` with 6 sequential nodes. Each node is independently traced via `@trace_node` (Langfuse) and logs structured JSON on completion.
 
 ```
-Input: { description, source, attachment? }
+Input: { description, source, attachment? }  ← also accepted via voice WebSocket
   │
   ▼
 [1] classify_node        → incident_type: checkout_failure | login_error | catalog_issue | ...
   │                        classification_confidence < 0.35 → vague_input=True (short-circuits to escalation)
+  │                        NOTE: attachment present → vague_input always False (file is the report)
   ▼
 [2] extract_node         → entities: affected_service, feature, error_patterns, user_impact
   │
@@ -46,9 +49,9 @@ Input: { description, source, attachment? }
                            hybrid_confidence = (llm × 0.7) + (rag_relevance × 0.3)  [if RAG results]
                            hybrid_confidence = llm_confidence                         [if no RAG results]
                            if confidence ≤ 0.70 → escalated_human (no ticket created)
-                           if confidence > 0.70 → dedup check → GitHub Issue + Jira ticket
+                           if confidence > 0.70 → local dedup → GitHub dedup → create Issue + Jira ticket
 
-Output: TriageResult JSON
+Output: TriageResult JSON  ← spoken aloud via edge-tts if submitted via voice
 ```
 
 > **Design note — Severity assignment:** Severity is determined inside `route_node` alongside team routing. This avoids a redundant LLM invocation and reduces latency by ~1–2 s. Both decisions share context and are produced atomically.
@@ -68,12 +71,14 @@ The `confidence_score` field in the output reflects how well all signals agree. 
 | Control | Implementation |
 |---|---|
 | Vague input filter | `classify_node` sets `vague_input=True` when `classification_confidence < 0.35`; `route_node` short-circuits to escalation without further LLM calls |
+| Attachment bypass | If an attachment is present, `vague_input` is never set to `True` — the file itself is treated as the incident report |
 | Confidence threshold | `route_node` hybrid confidence ≤ 0.70 → no ticket created, Slack escalation alert sent |
 | Human-in-the-loop | Frontend shows escalation card; Slack sends `⚠️ HUMAN REVIEW REQUIRED` Block Kit message |
-| GitHub deduplication | Before creating a ticket, `search_similar_issues()` checks for open issues with matching `incident_type` + `affected_plugin`; if found, adds a comment instead of opening a new issue |
+| Local deduplication | `_find_local_duplicate()` scans the last 100 local incident files for an open ticket with the same `incident_type` before calling GitHub API, saving rate-limit quota |
+| GitHub deduplication | `search_similar_issues()` checks open GitHub issues with matching `incident_type` + `affected_plugin`; if found, adds a comment instead of opening a new issue |
 | Prompt injection guard | `guardrails.py` blocks 9 pattern classes before any LLM call; raises `GuardrailViolationError` → HTTP 400 |
 | Input sanitization | Control chars stripped, whitespace collapsed in `sanitize_text()` before any LLM call |
-| Notification deduplication | `notified_issues.json` ensures exactly-once email per resolved ticket |
+| Notification deduplication | Resolution watcher marks tickets `resolved` in Postgres; `notify_resolution()` is called once per ticket close event |
 | Frontend guard | Submit button disabled when `POST /validate-input` returns `is_valid: false` |
 
 ## Tech Stack
@@ -87,9 +92,13 @@ The `confidence_score` field in the output reflects how well all signals agree. 
 | Knowledge base | Reaction Commerce monorepo | Real e-commerce architecture and plugin logic |
 | Ticketing | GitHub Issues API + Jira REST API | Issue tracking + enterprise workflow integration |
 | Team notifications | Slack Webhooks (Block Kit) | Low-friction incident broadcast with per-team routing |
-| Reporter notifications | SMTP via aiosmtplib | Async, provider-agnostic email delivery |
+| Resolution notifications | Slack `#tickets-resolved` | Block Kit alert when GitHub/Jira issue is closed |
+| Voice interface | WebSocket + Web Speech API + edge-tts | Real-time bilingual (ES/EN) voice incident reporting |
+| Text-to-speech | edge-tts (Microsoft Edge Neural) | Free neural TTS, no API key required, streaming MP3 |
+| Ticket persistence | asyncpg + Neon/PostgreSQL | Persistent incident history powering the reports dashboard |
+| Analytics reports | `/reports/summary` + GPT-4o-mini | SRE Wrapped: AI-narrated incident stats per period |
 | Observability | Langfuse + structlog (JSON) | Per-node traces and structured logs |
-| Frontend | Next.js 14 + Tailwind CSS | Incident form + real-time status polling |
+| Frontend | Next.js 14 + Tailwind CSS | Incident form + real-time status polling + voice UI |
 | Runtime | Docker Compose | Reproducible local deployment |
 
 ## Quick Start
@@ -121,16 +130,20 @@ ScoutOps/
 ├── apps/
 │   ├── backend/                  # FastAPI backend
 │   │   └── app/
+│   │       ├── db/               #   database.py (Neon/Postgres), queries.py, models.py
+│   │       ├── routes/           #   incident.py, voice_ws.py, reports.py
 │   │       ├── services/         #   agent_service.py, resolution_watcher.py
 │   │       ├── schemas/          #   Pydantic models
+│   │       ├── security/         #   guardrails.py (prompt injection)
 │   │       └── main.py           #   API endpoints
 │   └── frontend/                 # Next.js 14 frontend
 │       └── src/
 │           ├── app/              #   page.tsx (main view)
-│           └── components/       #   ReportForm, ResultView, TicketStatus
+│           └── components/       #   ReportForm, ResultView, TicketStatus, VoiceButton
 ├── integrations/                 # GitHub, Jira, Slack, Email
 ├── observability/                # Langfuse tracing, structlog
 ├── rag/                          # Chroma ingestion and query
+├── voice/                        # Voice module: intent_handler, session, synthesizer
 ├── docker-compose.yml
 ├── .env.example
 ├── QUICKGUIDE.md                 # Step-by-step run & test guide

@@ -13,18 +13,20 @@ This document describes the current capacity of the single-instance deployment, 
   │  Docker Compose — single host                            │
   │                                                          │
   │  [Next.js Frontend] ──► [FastAPI Backend]                │
+  │  [Voice WebSocket]  ──►  /ws/voice                       │
   │                              │                           │
   │                    ┌─────────┴──────────┐                │
   │                    │   LangGraph Agent  │                │
   │                    │ (6-node pipeline)  │                │
   │                    └─────────┬──────────┘                │
   │                              │                           │
-  │              ┌───────────────┼───────────────┐           │
-  │              ▼               ▼               ▼           │
-  │        [Chroma DB]   [Gemini API]   [GitHub/Jira/Slack]  │
-  │        (local vol)  (external)      (external APIs)      │
-  │                                                          │
-  │  [Resolution Watcher] — polls GitHub every 30 s          │
+  │        ┌───────────────────┼────────────────────┐       │
+  │        ▼               ▼               ▼          ▼      │
+  │  [Chroma DB]  [Gemini API]  [GitHub/Jira/Slack] [Neon/PG] │
+  │  (local vol)  (external)    (external APIs)    (external)  │
+  │                                                    │      │
+  │  [Resolution Watcher] — polls GitHub every 30 s    │      │
+  │  [/reports/summary] ───────────────────────────┘      │
   └──────────────────────────────────────────────────────────┘
 ```
 
@@ -39,11 +41,13 @@ This document describes the current capacity of the single-instance deployment, 
 | **LangGraph pipeline** | Synchronous, sequential 6 nodes | 2–4 s per LLM call × 4 nodes = 8–15 s total | Primary latency driver |
 | **Gemini API** | 1 call per node (classify, extract, summarize, route) | External rate limit: 15 RPM (free tier) | Hard ceiling on concurrent incidents |
 | **Chroma vector DB** | Single-node, local filesystem | No horizontal scaling; all reads hit one process | Limits RAG throughput under concurrent load |
-| **GitHub API** | 1–2 calls per incident (search + create or comment) | 5,000 req/hr per token | ~83 incidents/min max (create only) |
+| **GitHub API** | 1–2 calls per incident (local dedup first, then GitHub search) | 5,000 req/hr per token | Local dedup reduces GitHub calls; ~83 incidents/min max otherwise |
 | **Jira API** | 1 call per incident (create ticket) | Rate limit varies by plan | Additional latency ~300–800 ms |
 | **Resolution watcher** | Polls GitHub every 30 s | Redundant API calls; O(n) per poll cycle | Rate limit waste; delayed close detection |
 | **FastAPI** | Single uvicorn worker (default) | Blocks on background tasks | Limits true concurrency |
-| **Deduplication** | `search_similar_issues()` before every ticket | 1 extra GitHub API call per incident | +200–400 ms, but reduces total ticket volume |
+| **Voice WebSocket** | Async WebSocket per session; `edge-tts` streaming | ~50 concurrent sessions (event-loop bound) | Horizontal scaling requires sticky sessions or shared session store |
+| **Neon/Postgres** | Single `asyncpg.connect()` per query (no pool) | Connection overhead per report request | Switch to `asyncpg.create_pool()` for production |
+| **SRE Reports** | Full table scan on `GET /reports/summary` | O(n) over all tickets; slow at large scale | Add time-range index on `created_at`; cache with Redis TTL |
 
 ---
 
@@ -55,6 +59,8 @@ Single instance with default configuration:
 - **Effective throughput:** ~4–7 incidents/min (limited by Gemini free-tier RPM)
 - **Paid Gemini tier:** ~60–120 incidents/min (latency-bound, not rate-bound)
 - **Daily capacity (8 h window):** ~2,880–57,600 incidents depending on Gemini quota
+- **Voice sessions:** ~50 concurrent WebSocket connections per instance (async, event-loop bound)
+- **Reports endpoint:** <200 ms for up to ~10K tickets (Neon free tier); caching recommended beyond that
 - **Resolution notification delay:** up to 30 s after ticket close (polling interval)
 
 > **Assumption:** Incident volume for a mid-size e-commerce platform is bursty, not continuous. Peak load is 10–50 incidents/hour during deployments or incidents, not sustained thousands/min.
@@ -182,10 +188,12 @@ Jira resolves ticket →  POST /webhooks/jira    →  update incident state
 
 1. **Incident volume is bursty, not sustained.** Peak load occurs during deployments (~10–50 incidents/hour). Continuous high-frequency ingestion is not the primary use case.
 2. **LLM is the primary cost and latency driver.** All other components (Chroma, GitHub API, Slack) are fast relative to Gemini response time.
-3. **Deduplication reduces ticket volume by ~30–50%** in practice. Repeated incidents during the same outage are consolidated, reducing GitHub/Jira API pressure.
-4. **≤ 0.70 escalation threshold reduces LLM load for vague inputs.** The `vague_input` short-circuit skips 4 out of 6 LLM calls for clearly invalid reports, saving quota.
-5. **RAG corpus is bounded.** The Reaction Commerce plugin codebase is ~10K chunks. Chroma handles this comfortably; migration to Qdrant is only needed at 10× corpus size or multi-replica deployment.
-6. **Integrations (GitHub, Jira, Slack, SMTP) are non-blocking on failure.** Each integration call has a try/except; failures are logged but don't retry or block the response. A production system would add a retry queue.
+3. **Deduplication reduces ticket volume by ~30–50%** in practice. Local file dedup runs first (no API call); GitHub search only runs on cache miss. Repeated incidents during the same outage are consolidated.
+4. **≤ 0.70 escalation threshold reduces LLM load for vague inputs.** The `vague_input` short-circuit skips 4 out of 6 LLM calls for clearly invalid reports, saving quota. Attachment presence bypasses this check entirely.
+5. **Voice interface adds negligible load per session.** The triage pipeline is reused; the only additional cost is the intent-classification LLM call + edge-tts synthesis (~100–200 ms).
+6. **Neon/Postgres is optional.** The system falls back to JSON-file persistence when `NEON_DATABASE_URL` is absent; `/reports/summary` returns zero stats in that mode.
+7. **RAG corpus is bounded.** The Reaction Commerce plugin codebase is ~10K chunks. Chroma handles this comfortably; migration to Qdrant is only needed at 10× corpus size or multi-replica deployment.
+8. **Integrations (GitHub, Jira, Slack) are non-blocking on failure.** Each integration call has a try/except; failures are logged but don't retry or block the response. A production system would add a retry queue.
 
 ---
 
@@ -197,3 +205,5 @@ Jira resolves ticket →  POST /webhooks/jira    →  update incident state
 4. **Parallel retrieve + attachments** — LangGraph change, saves ~20% latency for incidents with attachments.
 5. **Qdrant migration** — needed only when deploying >1 backend replica or RAG corpus exceeds 50K chunks.
 6. **Idempotency table for notifications** — prevents duplicate emails/Slack messages on retry or watcher restart.
+7. **Postgres connection pool** — replace `asyncpg.connect()` with `asyncpg.create_pool()` before production; add `created_at` index for fast time-range queries.
+8. **Voice sticky sessions** — add Redis session store for `VoiceSession` state when scaling to >1 FastAPI replica.
