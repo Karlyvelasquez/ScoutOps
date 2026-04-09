@@ -1,6 +1,5 @@
 import asyncio
 import json
-import shutil
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -12,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 from app.db.database import init_db
 from app.models.incident import IncidentSubmission
-from app.routes import incident_router, reports_router
+from app.routes import incident_router, voice_router, reports_router
 from app.services.agent_service import AgentService
 from app.services.resolution_watcher import start_resolution_watcher
 from app.schemas.incident import (
@@ -24,6 +23,23 @@ from app.security.guardrails import GuardrailViolationError, assert_safe_text, s
 
 UPLOAD_DIR = Path("./data/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+LOG_EXTENSIONS = {".log", ".txt", ".csv", ".json", ".out", ".err"}
+
+
+def _detect_attachment_type(filename: str, content_type: str) -> str:
+    """Determine attachment type by extension first, MIME as fallback."""
+    ext = Path(filename).suffix.lower()
+    if ext in IMAGE_EXTENSIONS:
+        return "image"
+    if ext in LOG_EXTENSIONS:
+        return "log"
+    # Fallback to MIME type
+    if content_type.startswith("image/"):
+        return "image"
+    return "log"
 
 
 @asynccontextmanager
@@ -55,6 +71,7 @@ app.add_middleware(
 )
 
 app.include_router(incident_router)
+app.include_router(voice_router)
 app.include_router(reports_router)
 
 agent_service = AgentService()
@@ -137,6 +154,14 @@ async def create_incident(
             description = description or body.get("description")
             source = source or body.get("source")
 
+    # Allow attachment-only submissions: use a default description when none is provided
+    has_attachment = attachment is not None and bool(attachment.filename)
+    if not description or not description.strip():
+        if has_attachment:
+            description = f"Attachment submitted for analysis: {attachment.filename}"
+        else:
+            raise HTTPException(status_code=422, detail="description is required when no attachment is provided")
+
     try:
         submission = IncidentSubmission(
             description=description,
@@ -155,14 +180,19 @@ async def create_incident(
     attachment_type: str | None = None
 
     if attachment and attachment.filename:
+        file_bytes = await attachment.read()
+        if len(file_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"El archivo supera el límite de {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+            )
         incident_uid = uuid.uuid4().hex[:12]
         safe_name = f"{incident_uid}_{Path(attachment.filename).name}"
         dest = UPLOAD_DIR / safe_name
         with open(dest, "wb") as f:
-            shutil.copyfileobj(attachment.file, f)
+            f.write(file_bytes)
         attachment_path = str(dest)
-        mime = attachment.content_type or ""
-        attachment_type = "image" if mime.startswith("image/") else "log"
+        attachment_type = _detect_attachment_type(attachment.filename, attachment.content_type or "")
 
     incident_id = agent_service.create_incident(
         description=cleaned_description,
@@ -205,15 +235,16 @@ def map_incident_response(incident_data: dict) -> dict:
             "suggested_actions": rag_response.get("suggested_actions", []),
             "assigned_team": rag_response.get("assigned_team"),
             "confidence_score": rag_response.get("confidence_score"),
-            "processing_time_ms": rag_response.get("processing_time_ms", 0)
+            "processing_time_ms": rag_response.get("processing_time_ms", 0),
+            "attachment_analysis": rag_response.get("attachment_analysis"),
         }
-        
+
         components = rag_response.get("affected_components", [])
         if components:
             result_dict["affected_plugin"] = components[0].get("plugin", "")
             result_dict["layer"] = components[0].get("layer", "")
             result_dict["affected_file"] = components[0].get("file")
-            
+
         mapped_data["result"] = result_dict
     
     return mapped_data

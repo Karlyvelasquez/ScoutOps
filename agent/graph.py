@@ -107,5 +107,6 @@ def build_triage_result(state: AgentState) -> TriageResult:
         summary=state.get("technical_summary", "Unable to generate summary"),
         suggested_actions=entities.get("suggested_actions", ["Manual triage required"]),
         confidence_score=confidence_score,
-        processing_time_ms=total_time
+        processing_time_ms=total_time,
+        attachment_analysis=state.get("attachment_analysis"),
     )
