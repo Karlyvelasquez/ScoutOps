@@ -222,9 +222,9 @@ class AgentService:
                 loop.run_until_complete(insert_ticket(ticket_data))
             finally:
                 loop.close()
-        except Exception:
-            # Ticket history persistence failures should not block incident lifecycle.
-            pass
+        except Exception as exc:
+            # Keep incident lifecycle non-blocking but surface DB failures in logs.
+            print(f"ticket_persistence_failed: {type(exc).__name__}: {exc}")
     
     def process_incident(self, description: str, source: str) -> TriageResult:
         incident_report = IncidentReport(

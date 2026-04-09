@@ -2,26 +2,42 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
+import asyncio
 from typing import Any
 
-import aiosqlite
+import asyncpg
+
+from app.db.database import _database_url, init_db
 
 
-def _db_path() -> Path:
-    raw_path = os.getenv("SQLITE_DB_PATH", "./data/sre_agent.db").strip() or "./data/sre_agent.db"
-    return Path(raw_path)
+async def _connect() -> asyncpg.Connection:
+    return await asyncpg.connect(_database_url())
+
+
+_schema_ready = False
+_schema_lock = asyncio.Lock()
+
+
+async def _ensure_schema() -> None:
+    """Lazily initialize schema for fresh Neon databases."""
+    global _schema_ready
+    if _schema_ready:
+        return
+
+    async with _schema_lock:
+        if _schema_ready:
+            return
+        await init_db()
+        _schema_ready = True
 
 
 async def insert_ticket(ticket: dict[str, Any]) -> None:
-    db_path = _db_path()
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    async with aiosqlite.connect(db_path) as connection:
+    await _ensure_schema()
+    connection = await _connect()
+    try:
         await connection.execute(
             """
-            INSERT OR REPLACE INTO tickets (
+            INSERT INTO tickets (
                 id,
                 incident_type,
                 severity,
@@ -35,71 +51,89 @@ async def insert_ticket(ticket: dict[str, Any]) -> None:
                 jira_ticket_key,
                 created_at,
                 resolved_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ON CONFLICT (id)
+            DO UPDATE SET
+                incident_type = EXCLUDED.incident_type,
+                severity = EXCLUDED.severity,
+                affected_plugin = EXCLUDED.affected_plugin,
+                summary = EXCLUDED.summary,
+                original_description = EXCLUDED.original_description,
+                status = EXCLUDED.status,
+                github_ticket_url = EXCLUDED.github_ticket_url,
+                github_ticket_number = EXCLUDED.github_ticket_number,
+                jira_ticket_url = EXCLUDED.jira_ticket_url,
+                jira_ticket_key = EXCLUDED.jira_ticket_key,
+                created_at = EXCLUDED.created_at,
+                resolved_at = EXCLUDED.resolved_at
             """,
-            (
-                str(ticket.get("id", "")),
-                ticket.get("incident_type"),
-                ticket.get("severity"),
-                ticket.get("affected_plugin"),
-                ticket.get("summary"),
-                ticket.get("original_description"),
-                ticket.get("status", "open"),
-                ticket.get("github_ticket_url"),
-                ticket.get("github_ticket_number"),
-                ticket.get("jira_ticket_url"),
-                ticket.get("jira_ticket_key"),
-                ticket.get("created_at"),
-                ticket.get("resolved_at"),
-            ),
+            str(ticket.get("id", "")),
+            ticket.get("incident_type"),
+            ticket.get("severity"),
+            ticket.get("affected_plugin"),
+            ticket.get("summary"),
+            ticket.get("original_description"),
+            ticket.get("status", "open"),
+            ticket.get("github_ticket_url"),
+            ticket.get("github_ticket_number"),
+            ticket.get("jira_ticket_url"),
+            ticket.get("jira_ticket_key"),
+            ticket.get("created_at"),
+            ticket.get("resolved_at"),
         )
-        await connection.commit()
+    finally:
+        await connection.close()
 
 
 async def get_all_tickets() -> list[dict[str, Any]]:
-    async with aiosqlite.connect(_db_path()) as connection:
-        connection.row_factory = aiosqlite.Row
-        cursor = await connection.execute(
+    await _ensure_schema()
+    connection = await _connect()
+    try:
+        rows = await connection.fetch(
             """
             SELECT *
             FROM tickets
             ORDER BY created_at DESC
             """
         )
-        rows = await cursor.fetchall()
-
-    return [dict(row) for row in rows]
+        return [dict(row) for row in rows]
+    finally:
+        await connection.close()
 
 
 async def get_ticket_by_id(incident_id: str) -> dict[str, Any] | None:
-    async with aiosqlite.connect(_db_path()) as connection:
-        connection.row_factory = aiosqlite.Row
-        cursor = await connection.execute(
-            "SELECT * FROM tickets WHERE id = ?",
-            (incident_id,),
-        )
-        row = await cursor.fetchone()
-
-    return dict(row) if row is not None else None
+    await _ensure_schema()
+    connection = await _connect()
+    try:
+        row = await connection.fetchrow("SELECT * FROM tickets WHERE id = $1", incident_id)
+        return dict(row) if row is not None else None
+    finally:
+        await connection.close()
 
 
 async def update_ticket_status(incident_id: str, status: str, resolved_at: str) -> None:
-    async with aiosqlite.connect(_db_path()) as connection:
+    await _ensure_schema()
+    connection = await _connect()
+    try:
         await connection.execute(
             """
             UPDATE tickets
-            SET status = ?, resolved_at = ?
-            WHERE id = ?
+            SET status = $1, resolved_at = $2
+            WHERE id = $3
             """,
-            (status, resolved_at, incident_id),
+            status,
+            resolved_at,
+            incident_id,
         )
-        await connection.commit()
+    finally:
+        await connection.close()
 
 
 async def get_open_tickets() -> list[dict[str, Any]]:
-    async with aiosqlite.connect(_db_path()) as connection:
-        connection.row_factory = aiosqlite.Row
-        cursor = await connection.execute(
+    await _ensure_schema()
+    connection = await _connect()
+    try:
+        rows = await connection.fetch(
             """
             SELECT *
             FROM tickets
@@ -107,30 +141,26 @@ async def get_open_tickets() -> list[dict[str, Any]]:
             ORDER BY created_at DESC
             """
         )
-        rows = await cursor.fetchall()
-
-    return [dict(row) for row in rows]
+        return [dict(row) for row in rows]
+    finally:
+        await connection.close()
 
 
 async def get_ticket_by_github_number(github_number: int) -> dict[str, Any] | None:
-    async with aiosqlite.connect(_db_path()) as connection:
-        connection.row_factory = aiosqlite.Row
-        cursor = await connection.execute(
-            "SELECT * FROM tickets WHERE github_ticket_number = ?",
-            (github_number,),
-        )
-        row = await cursor.fetchone()
-
-    return dict(row) if row is not None else None
+    await _ensure_schema()
+    connection = await _connect()
+    try:
+        row = await connection.fetchrow("SELECT * FROM tickets WHERE github_ticket_number = $1", github_number)
+        return dict(row) if row is not None else None
+    finally:
+        await connection.close()
 
 
 async def get_ticket_by_jira_key(jira_key: str) -> dict[str, Any] | None:
-    async with aiosqlite.connect(_db_path()) as connection:
-        connection.row_factory = aiosqlite.Row
-        cursor = await connection.execute(
-            "SELECT * FROM tickets WHERE jira_ticket_key = ?",
-            (jira_key,),
-        )
-        row = await cursor.fetchone()
-
-    return dict(row) if row is not None else None
+    await _ensure_schema()
+    connection = await _connect()
+    try:
+        row = await connection.fetchrow("SELECT * FROM tickets WHERE jira_ticket_key = $1", jira_key)
+        return dict(row) if row is not None else None
+    finally:
+        await connection.close()
