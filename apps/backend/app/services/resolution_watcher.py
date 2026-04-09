@@ -16,6 +16,7 @@ from app.db.queries import (
     get_ticket_by_jira_key,
     update_ticket_status,
 )
+from integrations.slack import notify_resolution
 from observability.logs import get_logger
 
 logger = get_logger(__name__)
@@ -95,6 +96,7 @@ async def _sync_one_ticket(
 
     now_iso = datetime.now(timezone.utc).isoformat()
     status_updated = False
+    resolved_ticket: dict[str, Any] | None = None
 
     github_ticket_number = ticket.get("github_ticket_number")
     if github_ticket_number is not None:
@@ -108,6 +110,7 @@ async def _sync_one_ticket(
             if ticket_row is not None:
                 incident_id = str(ticket_row.get("id", incident_id))
                 await update_ticket_status(incident_id=incident_id, status="resolved", resolved_at=now_iso)
+                resolved_ticket = ticket_row
                 status_updated = True
 
     if not status_updated:
@@ -128,7 +131,11 @@ async def _sync_one_ticket(
                     if ticket_row is not None:
                         incident_id = str(ticket_row.get("id", incident_id))
                         await update_ticket_status(incident_id=incident_id, status="resolved", resolved_at=now_iso)
+                        resolved_ticket = ticket_row
                         status_updated = True
+
+    if status_updated and resolved_ticket is not None:
+        notify_resolution(resolved_ticket)
 
 
 async def start_resolution_watcher() -> None:
