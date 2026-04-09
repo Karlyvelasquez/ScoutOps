@@ -68,9 +68,9 @@ def route_node(state: AgentState) -> AgentState:
         rag_context = state.get("rag_context") or []
         if rag_context:
             rag_boost = max(r.get("relevance_score", 0.0) for r in rag_context)
+            hybrid_confidence = round(min(1.0, (llm_confidence * 0.7) + (rag_boost * 0.3)), 4)
         else:
-            rag_boost = 0.0
-        hybrid_confidence = round((llm_confidence * 0.6) + (rag_boost * 0.4), 4)
+            hybrid_confidence = round(llm_confidence, 4)
 
         routing_info = {
             "severity": response.get("severity", "P3"),

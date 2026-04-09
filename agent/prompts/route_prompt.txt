@@ -26,9 +26,14 @@ Determine:
 5. suggested_actions: List 3-4 specific debugging steps or actions to take
 
 6. confidence_score: Your confidence in this triage decision as a float from 0.0 to 1.0.
-   - 0.9-1.0: Very clear incident with obvious plugin/team mapping and matching evidence
-   - 0.7-0.89: Reasonably confident, some ambiguity in routing or severity
-   - 0.5-0.69: Moderate confidence, multiple possible teams/plugins, unclear evidence
-   - 0.0-0.49: Low confidence, vague description, insufficient information to route reliably
+   - 0.85-1.0: Clear incident with a specific error pattern, obvious plugin and team mapping
+   - 0.70-0.84: Good confidence in routing, incident type is clear even if severity has minor ambiguity
+   - 0.50-0.69: Multiple possible plugins or teams could own this, description is ambiguous
+   - 0.0-0.49: Very vague description or insufficient data to reliably route this incident
+
+   IMPORTANT: For most incidents where the incident_type and affected_service are clearly identified,
+   default to 0.80 confidence. Only go below 0.70 if there is genuine ambiguity about which team
+   or plugin is responsible. A clear incident type like checkout_failure mapping to payments-team
+   should be at least 0.80.
 
 Return as JSON with these exact keys: severity, assigned_team, affected_plugin, layer, suggested_actions, confidence_score.
