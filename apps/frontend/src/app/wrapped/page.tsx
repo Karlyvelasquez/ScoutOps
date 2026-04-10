@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import "@/app/control-core.css";
 
 type Period = "day" | "week" | "month";
 
@@ -275,22 +276,26 @@ export default function WrappedPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen grid place-items-center bg-slate-50 text-slate-900 font-sans">
-        <p className="text-2xl font-semibold">Loading SRE Wrapped...</p>
+      <main className="wrapped-page">
+        <section className="wrapped-container wrapped-center">
+          <p className="wrapped-loading">Loading SRE Wrapped...</p>
+        </section>
       </main>
     );
   }
 
   if (error || !data) {
     return (
-      <main className="min-h-screen grid place-items-center bg-slate-50 text-slate-900 font-sans px-6 text-center">
-        <div className="space-y-4">
-          <p className="text-2xl font-semibold">Could not load Wrapped summary</p>
-          <p className="text-slate-600">{error || "Unknown error"}</p>
-          <Link href="/" className="inline-flex rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold">
+      <main className="wrapped-page">
+        <section className="wrapped-container wrapped-center">
+          <div className="wrapped-error-box">
+          <p className="wrapped-loading">Could not load Wrapped summary</p>
+          <p className="wrapped-error-text">{error || "Unknown error"}</p>
+          <Link href="/" className="wrapped-back-btn">
             Back to Home
           </Link>
-        </div>
+          </div>
+        </section>
       </main>
     );
   }
@@ -301,21 +306,21 @@ export default function WrappedPage() {
   const avgMax = Math.max(1, ...avgCategories.map(([, value]) => value));
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900 p-6 md:p-12" style={{ fontFamily: "system-ui" }}>
-      <section className="max-w-6xl mx-auto space-y-8">
-        <header className="flex flex-wrap items-center justify-between gap-3">
+    <main className="wrapped-page">
+      <section className="wrapped-container">
+        <header className="wrapped-header">
           <div>
-            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">SRE Wrapped</h1>
-            <p className="text-slate-500 mt-1">All your incident highlights in one clean view.</p>
+            <h1 className="wrapped-title">SRE Wrapped</h1>
+            <p className="wrapped-subtitle">All your incident highlights in one clean view.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Link href="/" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+          <div className="wrapped-actions">
+            <Link href="/" className="wrapped-ghost-btn">
               Back to Report
             </Link>
             <button
               type="button"
               onClick={onDownloadPdf}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+              className="wrapped-solid-btn"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 3v12" />
@@ -327,15 +332,15 @@ export default function WrappedPage() {
           </div>
         </header>
 
-        <div className="flex items-center gap-2">
-          <label htmlFor="period" className="text-sm text-slate-600 font-semibold">Period</label>
+        <div className="wrapped-period-row">
+          <label htmlFor="period" className="wrapped-period-label">Period</label>
           <select
             id="period"
             value={period}
             onChange={(event) => {
               setPeriod(event.target.value as Period);
             }}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold outline-none"
+            className="wrapped-period-select"
           >
             <option value="day">Last day</option>
             <option value="week">Last week</option>
@@ -343,86 +348,86 @@ export default function WrappedPage() {
           </select>
         </div>
 
-        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Total incidents</p>
-            <p className="text-[clamp(2.2rem,7vw,4rem)] font-extrabold leading-none mt-2">{data.raw.total_incidents}</p>
+        <section className="history-stats-grid wrapped-stats-grid">
+          <article className="history-stat-card">
+            <p className="history-stat-label">Total incidents</p>
+            <p className="history-stat-value">{data.raw.total_incidents}</p>
           </article>
-          <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Most failing plugin</p>
-            <p className="text-xl md:text-2xl font-extrabold mt-2 break-words">{data.phrases.villain_plugin}</p>
+          <article className="history-stat-card">
+            <p className="history-stat-label">Most failing plugin</p>
+            <p className="history-stat-value wrapped-stat-word">{data.phrases.villain_plugin}</p>
           </article>
-          <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Fastest category</p>
-            <p className="text-xl md:text-2xl font-extrabold mt-2 break-words">{data.phrases.superpower_category}</p>
+          <article className="history-stat-card">
+            <p className="history-stat-label">Fastest category</p>
+            <p className="history-stat-value wrapped-stat-word">{data.phrases.superpower_category}</p>
           </article>
-          <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Estimated cost</p>
-            <p className="text-[clamp(2.1rem,6vw,3.6rem)] font-extrabold leading-none mt-2 text-orange-600">
+          <article className="history-stat-card">
+            <p className="history-stat-label">Estimated cost</p>
+            <p className="history-stat-value wrapped-cost">
               ${data.raw.estimated_cost_usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           </article>
         </section>
 
-        <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold">Team Summary</h2>
-            <p className="text-slate-700 mt-2">{data.phrases.team_summary}</p>
-            <p className="text-slate-700 mt-3">{data.phrases.villain_phrase}</p>
-            <p className="text-slate-700 mt-3">{data.phrases.superpower_phrase}</p>
-            <p className="text-slate-700 mt-3">{data.phrases.downtime_cost_phrase}</p>
+        <section className="wrapped-grid-2">
+          <article className="wrapped-panel">
+            <h2 className="wrapped-panel-title">Team Summary</h2>
+            <p className="wrapped-panel-text">{data.phrases.team_summary}</p>
+            <p className="wrapped-panel-text">{data.phrases.villain_phrase}</p>
+            <p className="wrapped-panel-text">{data.phrases.superpower_phrase}</p>
+            <p className="wrapped-panel-text">{data.phrases.downtime_cost_phrase}</p>
           </article>
 
-          <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold">Chef Recommendation</h2>
-            <p className="text-slate-700 mt-2 leading-relaxed">{data.phrases.chef_recommendation}</p>
-            <div className="mt-4 rounded-lg bg-slate-100 p-3 text-sm text-slate-700">
-              <p className="font-semibold">Share preview</p>
-              <p className="mt-2 whitespace-pre-line">{shareText}</p>
+          <article className="wrapped-panel">
+            <h2 className="wrapped-panel-title">Chef Recommendation</h2>
+            <p className="wrapped-panel-text">{data.phrases.chef_recommendation}</p>
+            <div className="wrapped-inline-note">
+              <p className="wrapped-inline-title">Share preview</p>
+              <p className="wrapped-inline-body">{shareText}</p>
             </div>
           </article>
         </section>
 
-        <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold">P1 Chaos Hour Heatmap</h2>
-            <p className="text-slate-600 mt-1">{data.phrases.chaos_hour_phrase}</p>
-            <div className="mt-5 grid grid-cols-12 md:grid-cols-24 gap-2 items-end h-52">
+        <section className="wrapped-grid-2">
+          <article className="wrapped-panel">
+            <h2 className="wrapped-panel-title">P1 Chaos Hour Heatmap</h2>
+            <p className="wrapped-panel-hint">{data.phrases.chaos_hour_phrase}</p>
+            <div className="wrapped-heatmap-grid">
               {data.raw.p1_hour_distribution.map((count, hour) => {
                 const ratio = count / heatmapMax;
                 const minHeight = 10;
                 const dynamicHeight = minHeight + Math.round(ratio * 160);
                 return (
-                  <div key={hour} className="flex flex-col items-center gap-1">
+                  <div key={hour} className="wrapped-heatmap-col">
                     <div
-                      className="w-3 md:w-4 rounded-sm bg-blue-600"
+                      className="wrapped-heatmap-bar"
                       style={{ height: `${dynamicHeight}px`, opacity: 0.35 + ratio * 0.65 }}
                       title={`Hour ${hour}: ${count} incidents`}
                     />
-                    <span className="text-[10px] md:text-xs text-slate-500">{hour}</span>
+                    <span className="wrapped-heatmap-hour">{hour}</span>
                   </div>
                 );
               })}
             </div>
           </article>
 
-          <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold">Avg Resolution Time by Category</h2>
-            <p className="text-slate-600 mt-1">Hours to resolution in this {safePeriodLabel(period)}.</p>
-            <div className="mt-5 space-y-3">
+          <article className="wrapped-panel">
+            <h2 className="wrapped-panel-title">Avg Resolution Time by Category</h2>
+            <p className="wrapped-panel-hint">Hours to resolution in this {safePeriodLabel(period)}.</p>
+            <div className="wrapped-bars">
               {avgCategories.length === 0 && (
-                <p className="text-slate-500">No resolved incidents yet in this period.</p>
+                <p className="wrapped-panel-hint">No resolved incidents yet in this period.</p>
               )}
               {avgCategories.map(([category, value]) => {
                 const width = Math.max(8, Math.round((value / avgMax) * 100));
                 return (
-                  <div key={category}>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium text-slate-700 truncate mr-3">{category}</span>
-                      <span className="text-slate-500">{value.toFixed(2)}h</span>
+                  <div key={category} className="wrapped-bar-row">
+                    <div className="wrapped-bar-labels">
+                      <span className="wrapped-bar-name">{category}</span>
+                      <span className="wrapped-bar-value">{value.toFixed(2)}h</span>
                     </div>
-                    <div className="mt-1 h-2 rounded-full bg-slate-200">
-                      <div className="h-2 rounded-full bg-emerald-600" style={{ width: `${width}%` }} />
+                    <div className="wrapped-bar-track">
+                      <div className="wrapped-bar-fill" style={{ width: `${width}%` }} />
                     </div>
                   </div>
                 );
@@ -431,24 +436,24 @@ export default function WrappedPage() {
           </article>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-bold">Raw Stats</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
-            <div className="rounded-lg bg-slate-100 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Period days</p>
-              <p className="text-2xl font-bold mt-1">{data.raw.period_days}</p>
+        <section className="wrapped-panel">
+          <h2 className="wrapped-panel-title">Raw Stats</h2>
+          <div className="wrapped-raw-grid">
+            <div className="wrapped-raw-item">
+              <p className="wrapped-raw-label">Period days</p>
+              <p className="wrapped-raw-value">{data.raw.period_days}</p>
             </div>
-            <div className="rounded-lg bg-slate-100 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Peak P1 hour</p>
-              <p className="text-2xl font-bold mt-1">{data.raw.peak_p1_hour}:00</p>
+            <div className="wrapped-raw-item">
+              <p className="wrapped-raw-label">Peak P1 hour</p>
+              <p className="wrapped-raw-value">{data.raw.peak_p1_hour}:00</p>
             </div>
-            <div className="rounded-lg bg-slate-100 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Total hours lost</p>
-              <p className="text-2xl font-bold mt-1">{data.raw.total_hours_lost.toFixed(2)}</p>
+            <div className="wrapped-raw-item">
+              <p className="wrapped-raw-label">Total hours lost</p>
+              <p className="wrapped-raw-value">{data.raw.total_hours_lost.toFixed(2)}</p>
             </div>
-            <div className="rounded-lg bg-slate-100 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Fastest resolved category</p>
-              <p className="text-sm font-bold mt-2 break-words">{data.raw.fastest_resolved_category}</p>
+            <div className="wrapped-raw-item">
+              <p className="wrapped-raw-label">Fastest resolved category</p>
+              <p className="wrapped-raw-value-small">{data.raw.fastest_resolved_category}</p>
             </div>
           </div>
         </section>
